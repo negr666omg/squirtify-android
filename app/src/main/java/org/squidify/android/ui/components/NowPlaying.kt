@@ -486,7 +486,7 @@ private fun PlayingTab(
                 Box(
                     modifier = Modifier
                         .size(side)
-                        .clip(RoundedCornerShape(18.dp))
+                        .clip(RoundedCornerShape(26.dp))
                         .clickable(onClick = onCoverTap),
                 ) {
                     CoverArt(
@@ -496,7 +496,7 @@ private fun PlayingTab(
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer { alpha = pulseAlpha?.value ?: 1f },
-                        corner = 18.dp,
+                        corner = 26.dp,
                         contentDescription = current.album,
                     )
                 }
@@ -504,6 +504,15 @@ private fun PlayingTab(
         }
 
         Spacer(Modifier.height(12.dp))
+
+        Text(
+            text = "NOW PLAYING",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 4.dp),
+        )
 
         Text(
             text = current.title,
