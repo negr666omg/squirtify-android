@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -82,6 +83,8 @@ fun SearchScreen(
     var history by remember { mutableStateOf<List<String>>(emptyList()) }
     val scope = rememberCoroutineScope()
     var searchJob by remember { mutableStateOf<Job?>(null) }
+    var loadMoreJob by remember { mutableStateOf<Job?>(null) }
+    var searchGeneration by remember { mutableStateOf(0) }
 
     val songActions = remember { SongActionsHandler() }
     songActions.Render()
@@ -97,63 +100,106 @@ fun SearchScreen(
 
     fun runSearch(q: String) {
         searchJob?.cancel()
+        loadMoreJob?.cancel()
         khiPage = 1
         khiTotal = null
+        val generation = ++searchGeneration
         if (q.isBlank()) {
-            artists = null; albums = null; songs = null; khiAlbums = null; khiError = null
+            artists = null
+            albums = null
+            songs = null
+            khiAlbums = null
+            khiError = null
+            searching = false
+            khiLoadingMore = false
             return
         }
+
+        val selectedSource = source
+        val includeKhi = settings.khiEnabled
         searching = true
         searchJob = scope.launch {
-            delay(300)
-            if (source != SearchSource.KHINSIDER) {
-                try {
-                    val (a, al, s) = graph.subsonic.search3(q)
-                    artists = a; albums = al; songs = s
-                } catch (_: Exception) {
-                    artists = emptyList(); albums = emptyList(); songs = emptyList()
+            try {
+                delay(300)
+                if (generation != searchGeneration) return@launch
+
+                if (selectedSource != SearchSource.KHINSIDER) {
+                    try {
+                        val (a, al, s) = graph.subsonic.search3(q)
+                        if (generation != searchGeneration) return@launch
+                        artists = a
+                        albums = al
+                        songs = s
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        if (generation != searchGeneration) return@launch
+                        artists = emptyList()
+                        albums = emptyList()
+                        songs = emptyList()
+                    }
+                } else {
+                    artists = null
+                    albums = null
+                    songs = null
                 }
-            } else {
-                artists = null; albums = null; songs = null
-            }
-            if (settings.khiEnabled && source != SearchSource.SQUIDIFY) {
-                try {
-                    val res = graph.khi.searchAlbums(q, page = 1)
-                    khiAlbums = res.items
-                    khiTotal = res.totalMatches
-                    khiError = null
-                } catch (e: Exception) {
-                    khiAlbums = emptyList()
+
+                if (includeKhi && selectedSource != SearchSource.SQUIDIFY) {
+                    try {
+                        val res = graph.khi.searchAlbums(q, page = 1)
+                        if (generation != searchGeneration) return@launch
+                        khiAlbums = res.items
+                        khiTotal = res.totalMatches
+                        khiError = null
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (e: Exception) {
+                        if (generation != searchGeneration) return@launch
+                        khiAlbums = emptyList()
+                        khiTotal = null
+                        khiError = e.message
+                    }
+                } else {
+                    khiAlbums = null
                     khiTotal = null
-                    khiError = e.message
+                    khiError = null
                 }
-            } else {
-                khiAlbums = null
-                khiTotal = null
+
+                if (generation == searchGeneration) {
+                    graph.settings.addSearchTerm(q)
+                }
+            } finally {
+                // A cancelled older search must not clear the spinner for a
+                // newer query that is still loading.
+                if (generation == searchGeneration) searching = false
             }
-            searching = false
-            graph.settings.addSearchTerm(q)
         }
     }
 
     fun loadMoreKhi() {
         val q = query
         if (q.isBlank() || khiLoadingMore) return
+        val generation = searchGeneration
+        val nextPage = khiPage + 1
         khiLoadingMore = true
-        scope.launch {
+        loadMoreJob?.cancel()
+        loadMoreJob = scope.launch {
             try {
-                val next = khiPage + 1
-                val res = graph.khi.searchAlbums(q, page = next)
+                val res = graph.khi.searchAlbums(q, page = nextPage)
+                if (generation != searchGeneration || q != query) return@launch
                 val existing = khiAlbums ?: emptyList()
-                val fresh = res.items.filter { cand ->
-                    existing.none { it.url == cand.url }
+                val fresh = res.items.filter { candidate ->
+                    existing.none { it.url == candidate.url }
                 }
                 khiAlbums = existing + fresh
-                khiPage = next
+                khiPage = nextPage
                 khiTotal = res.totalMatches
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
+                // The already loaded pages remain usable; a later tap can retry.
             } finally {
-                khiLoadingMore = false
+                if (generation == searchGeneration) khiLoadingMore = false
             }
         }
     }
