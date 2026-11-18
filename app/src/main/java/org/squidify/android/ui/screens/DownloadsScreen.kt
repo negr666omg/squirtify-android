@@ -193,8 +193,8 @@ fun DownloadsScreen() {
             item {
                 SectionRow(
                     "Downloading (${active.size})" +
-                        if (queued.isNotEmpty()) " · Queued (${queued.size})" else "" +
-                        if (paused.isNotEmpty()) " · Paused (${paused.size})" else "",
+                        (if (queued.isNotEmpty()) " · Queued (${queued.size})" else "") +
+                        (if (paused.isNotEmpty()) " · Paused (${paused.size})" else ""),
                 )
             }
         }
