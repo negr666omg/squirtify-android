@@ -94,24 +94,13 @@ fun KhiAlbumScreen(
 
     fun playAll(startIndex: Int = 0, shuffled: Boolean = false) {
         val a = album ?: return
-        scope.launch {
-            try {
-                val players = a.tracks.map {
-                    PlayerSong.fromKhi(a.name, it.title, it.url, it.duration, graph.khi.imageUrl(a.coverUrl))
-                }
-                // play() highlights the tapped track IMMEDIATELY (optimistic
-                // queue); the row shows its own loading spinner while the
-                // track URLs are being resolved.
-                val resolved = App.graph().player.resolveKhiQueue(players)
-                if (shuffled) {
-                    App.graph().player.playShuffled(resolved)
-                } else {
-                    App.graph().player.play(resolved, startIndex)
-                }
-            } catch (e: Exception) {
-                error = e.message
-            }
+        val players = a.tracks.map {
+            PlayerSong.fromKhi(a.name, it.title, it.url, it.duration, graph.khi.imageUrl(a.coverUrl))
         }
+        // PlayerManager owns URL resolution and publishes the optimistic queue
+        // before resolving. This lets the tapped row highlight immediately
+        // and show its spinner instead of appearing unresponsive for seconds.
+        player.play(players, startIndex, shuffled)
     }
 
     // Quality ask for a single KHInsider track download
