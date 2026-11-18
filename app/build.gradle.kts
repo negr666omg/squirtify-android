@@ -29,9 +29,14 @@ android {
         if (keystoreFile.exists()) {
             create("release") {
                 storeFile = keystoreFile
-                storePassword = keystoreProps.getProperty("storePassword", "squidify2026")
-                keyAlias = keystoreProps.getProperty("keyAlias", "squidify")
-                keyPassword = keystoreProps.getProperty("keyPassword", "squidify2026")
+                storePassword = keystoreProps.getProperty("storePassword")
+                    ?: System.getenv("SQUIDIFY_STORE_PASSWORD")
+                    ?: error("Set storePassword in squidify.keystore.properties or SQUIDIFY_STORE_PASSWORD")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                    ?: error("Set keyAlias in squidify.keystore.properties")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+                    ?: System.getenv("SQUIDIFY_KEY_PASSWORD")
+                    ?: error("Set keyPassword in squidify.keystore.properties or SQUIDIFY_KEY_PASSWORD")
             }
         }
     }
@@ -51,15 +56,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-}
-
-kotlin {
-    compilerOptions {
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
-    }
-}
-
-android {
     buildFeatures {
         compose = true
     }
@@ -70,6 +66,12 @@ android {
     }
     testOptions {
         unitTests.isIncludeAndroidResources = false
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 
