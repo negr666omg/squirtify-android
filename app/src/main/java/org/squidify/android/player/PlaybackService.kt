@@ -69,8 +69,8 @@ class PlaybackService : MediaSessionService() {
 
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent("Squirtify/1.7.4")
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(30_000)
+            .setConnectTimeoutMs(10_000)
+            .setReadTimeoutMs(15_000)
             .setAllowCrossProtocolRedirects(true)
 
         // Serves cached bytes when available, otherwise fetches and stores them.
