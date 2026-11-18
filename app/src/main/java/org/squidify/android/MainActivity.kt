@@ -97,7 +97,17 @@ class MainActivity : ComponentActivity() {
                 val observer = LifecycleEventObserver { _, event ->
                     if (event == Lifecycle.Event.ON_RESUME) {
                         val now = AllFilesAccess.isGranted()
-                        if (now && !allFilesGranted) ensureAllFilesMigration(showToast = true)
+                        if (now && !allFilesGranted) {
+                            ensureAllFilesMigration(showToast = true)
+                        } else if (!now && allFilesGranted) {
+                            // The user may revoke and later re-grant access.
+                            // Force a sync from SAF/internal storage on the
+                            // next grant because writes continued on fallback.
+                            getSharedPreferences("squidify_storage", MODE_PRIVATE)
+                                .edit()
+                                .putInt("all_files_migration_version", 0)
+                                .apply()
+                        }
                         allFilesGranted = now
                     }
                 }
@@ -181,8 +191,16 @@ class MainActivity : ComponentActivity() {
      * after "All files access" is granted (flag-guarded, idempotent).
      */
     private fun ensureAllFilesMigration(showToast: Boolean = false) {
-        if (!AllFilesAccess.isGranted()) return
         val sp = getSharedPreferences("squidify_storage", MODE_PRIVATE)
+        if (!AllFilesAccess.isGranted()) {
+            // If access was revoked while the process was away, the app may
+            // have written to SAF/internal fallback. Reconcile those changes
+            // the next time the permission is granted.
+            if (sp.getInt("all_files_migration_version", 0) >= 2) {
+                sp.edit().putInt("all_files_migration_version", 0).apply()
+            }
+            return
+        }
         // Version 2 fixes an old precedence bug: SAF files must be copied
         // before internal fallbacks, otherwise stale favorites/settings can
         // overwrite the data the app actually read before migration.
