@@ -219,11 +219,6 @@ fun SearchScreen(
                     .padding(top = 18.dp, bottom = 2.dp),
             ) {
                 Text(
-                    text = "DISCOVER",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Text(
                     text = "Search",
                     style = MaterialTheme.typography.headlineLarge,
                     color = MaterialTheme.colorScheme.onBackground,
