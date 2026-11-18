@@ -16,6 +16,8 @@ data class DownloadJob(
     val title: String,
     val artist: String? = null,
     val album: String? = null,
+    /** Stable album identity for grouping tracks with different performers. */
+    val albumId: String? = null,
     val coverUrl: String? = null,
     /** Squidify: full /rest/stream URL (already has quality baked in).
      *  KHInsider: track page URL, resolved at download time. */
