@@ -29,6 +29,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import org.squidify.android.App
 import org.squidify.android.data.Album
 import org.squidify.android.data.DownloadSource
