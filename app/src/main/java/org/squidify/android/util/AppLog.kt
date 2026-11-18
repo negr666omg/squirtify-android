@@ -46,6 +46,19 @@ object AppLog {
     private const val MAX_MEMORY = 600
     private const val MAX_FILE_BYTES = 512L * 1024L
 
+    private val sensitiveQueryParameter = Regex(
+        """(?i)([?&](?:u|t|s|p|token|password|pass|auth|authorization|signature|sig|api[_-]?key|key)=)[^&#\\s]+""",
+    )
+    private val bearerToken = Regex("""(?i)(Bearer\\s+)[A-Za-z0-9._~+/-]+=*""")
+    private val urlCredentials = Regex("""(?i)(https?://)[^/@\\s:]+:[^/@\\s]+@""")
+
+    /** Keep diagnostics useful without persisting reusable auth or signed URL secrets. */
+    internal fun redactSensitiveValues(value: String): String =
+        value
+            .replace(sensitiveQueryParameter, "$" + "1[REDACTED]")
+            .replace(bearerToken, "$" + "1[REDACTED]")
+            .replace(urlCredentials, "$" + "1[REDACTED]@")
+
     private val _entries = MutableStateFlow<List<Entry>>(emptyList())
     val entries: StateFlow<List<Entry>> = _entries.asStateFlow()
 
@@ -76,9 +89,11 @@ object AppLog {
             timeMs = System.currentTimeMillis(),
             level = level,
             tag = tag,
-            message = message,
+            message = redactSensitiveValues(message),
             throwable = t?.let { thr ->
-                thr.toString() + "\n" + thr.stackTrace.take(8).joinToString("\n") { "    at $it" }
+                redactSensitiveValues(
+                    thr.toString() + "\n" + thr.stackTrace.take(8).joinToString("\n") { "    at $it" },
+                )
             },
         )
         synchronized(lock) {
@@ -172,7 +187,7 @@ object AppLog {
             timeMs = timeMs,
             level = level,
             tag = rest.take(idx),
-            message = rest.substring(idx + 2),
+            message = redactSensitiveValues(rest.substring(idx + 2)),
         )
     }
 
