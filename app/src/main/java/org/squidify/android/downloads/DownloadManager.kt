@@ -679,7 +679,7 @@ class DownloadManager(
             var url = if (job.source == DownloadSource.KHINSIDER && job.kind == "audio") null else job.fileUrl
             if (url == null && job.source == DownloadSource.KHINSIDER && job.kind == "audio") {
                 AppLog.d(TAG, "Resolving KHInsider track page → direct URL…")
-                val res = khi.resolve(job.requestUrl)
+                val res = khi.resolve(job.requestUrl, forceRefresh = true)
                 // Preserve the format selected when this job was queued.
                 // A later global quality change must not change the downloaded
                 // bytes while leaving the old extension and MIME type behind.
