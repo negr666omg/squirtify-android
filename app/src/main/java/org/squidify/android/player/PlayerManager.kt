@@ -1343,7 +1343,7 @@ class PlayerManager(
             .setCache(cache)
             .setUpstreamDataSourceFactory(
                 DefaultHttpDataSource.Factory()
-                    .setUserAgent("Squirtify/1.7.3")
+                    .setUserAgent("Squirtify/1.7.4")
                     .setConnectTimeoutMs(15_000)
                     .setReadTimeoutMs(30_000)
                     .setAllowCrossProtocolRedirects(true),
