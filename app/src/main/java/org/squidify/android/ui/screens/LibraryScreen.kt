@@ -45,19 +45,9 @@ fun LibraryScreen(
                 .padding(horizontal = 20.dp, vertical = 16.dp),
         ) {
             Text(
-                text = "COLLECTION",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text(
                 text = "Your library",
                 style = MaterialTheme.typography.headlineLarge,
                 color = MaterialTheme.colorScheme.onBackground,
-            )
-            Text(
-                text = "Everything you have saved and played.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         PrimaryTabRow(selectedTabIndex = selected) {
