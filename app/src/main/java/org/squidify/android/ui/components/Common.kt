@@ -162,7 +162,7 @@ fun SectionHeader(
 fun CoverArt(
     url: String?,
     modifier: Modifier = Modifier,
-    corner: Dp = 8.dp,
+    corner: Dp = 12.dp,
     contentDescription: String? = null,
 ) {
     Box(
@@ -202,30 +202,31 @@ fun AlbumCard(
     onClick: () -> Unit,
     coverUrl: String?,
     modifier: Modifier = Modifier,
-    width: Dp = 150.dp,
+    width: Dp = 166.dp,
 ) {
     val sizeModifier = if (width == androidx.compose.ui.unit.Dp.Unspecified)
         Modifier.fillMaxWidth() else Modifier.width(width)
     Column(
         modifier = modifier
             .then(sizeModifier)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(22.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .clickable(onClick = onClick)
-            .padding(8.dp),
+            .padding(9.dp),
     ) {
         CoverArt(
             url = coverUrl,
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f),
-            corner = 10.dp,
+            corner = 16.dp,
             contentDescription = album.name,
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(10.dp))
         Text(
             text = album.name,
             style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onBackground,
+            color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -360,7 +361,12 @@ fun SongRow(
                         Modifier.clickable(onClick = onClick)
                     },
                 )
-                .padding(horizontal = 16.dp, vertical = 6.dp),
+                .clip(RoundedCornerShape(18.dp))
+                .background(
+                    if (isCurrent) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.52f)
+                    else Color.Transparent,
+                )
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
         if (index != null && showIndex) {
@@ -531,20 +537,28 @@ fun EmptyState(text: String, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(32.dp),
+            .padding(horizontal = 28.dp, vertical = 36.dp),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector = SqIcons.MusicNote,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(40.dp),
-            )
-            Spacer(Modifier.height(12.dp))
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                modifier = Modifier.size(76.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = SqIcons.MusicNote,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.size(34.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(16.dp))
             Text(
                 text = text,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
