@@ -482,6 +482,67 @@ private fun DownloadsAlbumRow(
     }
 }
 
+/** One cached album track; unavailable tracks stay visible but disabled offline. */
+@Composable
+private fun CachedLibraryTrackRow(
+    title: String,
+    number: Int?,
+    subtitle: String,
+    downloaded: Boolean,
+    disabled: Boolean,
+    onPlay: () -> Unit,
+) {
+    val titleColor = if (disabled) {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.42f)
+    } else {
+        MaterialTheme.colorScheme.onBackground
+    }
+    val mutedColor = if (disabled) {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = !disabled, onClick = onPlay)
+            .padding(horizontal = 28.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = number?.takeIf { it > 0 }?.let { "%02d".format(it) } ?: "–",
+            style = MaterialTheme.typography.bodySmall,
+            color = mutedColor,
+            modifier = Modifier.width(30.dp),
+        )
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                color = titleColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = mutedColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (downloaded) {
+            Icon(
+                imageVector = SqIcons.Download,
+                contentDescription = "Downloaded",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
 /** One track inside an expanded library album — tap plays it (from that point). */
 @Composable
 private fun LibraryTrackRow(
