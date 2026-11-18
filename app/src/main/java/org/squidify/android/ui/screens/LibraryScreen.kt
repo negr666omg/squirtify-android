@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -16,7 +18,6 @@ import org.squidify.android.data.Album
 import org.squidify.android.data.Artist
 import org.squidify.android.data.Genre
 import org.squidify.android.data.Playlist
-import org.squidify.android.ui.components.ChipRow
 import org.squidify.android.ui.screens.library.FavouriteAlbumsTab
 import org.squidify.android.ui.screens.library.FavouriteSongsTab
 import org.squidify.android.ui.screens.library.HistoryTab
@@ -38,11 +39,19 @@ fun LibraryScreen(
     Column(Modifier.fillMaxSize()) {
         Text(
             text = "Library",
-            style = MaterialTheme.typography.displaySmall,
+            style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         )
-        ChipRow(options = sections, selected = selected, onSelect = { selected = it })
+        PrimaryTabRow(selectedTabIndex = selected) {
+            sections.forEachIndexed { index, label ->
+                Tab(
+                    selected = selected == index,
+                    onClick = { selected = index },
+                    text = { Text(label) },
+                )
+            }
+        }
         androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
             when (selected) {
                 0 -> HistoryTab(onAlbumClick = onAlbumClick, onArtistClick = onArtistClick)
