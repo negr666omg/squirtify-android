@@ -202,27 +202,31 @@ fun AlbumCard(
     onClick: () -> Unit,
     coverUrl: String?,
     modifier: Modifier = Modifier,
-    width: Dp = 166.dp,
+    width: Dp = 150.dp,
 ) {
     val sizeModifier = if (width == androidx.compose.ui.unit.Dp.Unspecified)
         Modifier.fillMaxWidth() else Modifier.width(width)
     Column(
         modifier = modifier
             .then(sizeModifier)
-            .clip(RoundedCornerShape(22.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            // A shaped background is cheaper than clipping the whole card
+            // (which also clips its artwork) during horizontal list scrolling.
+            .background(
+                MaterialTheme.colorScheme.surfaceContainerLow,
+                RoundedCornerShape(18.dp),
+            )
             .clickable(onClick = onClick)
-            .padding(9.dp),
+            .padding(8.dp),
     ) {
         CoverArt(
             url = coverUrl,
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f),
-            corner = 16.dp,
+            corner = 10.dp,
             contentDescription = album.name,
         )
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
         Text(
             text = album.name,
             style = MaterialTheme.typography.titleSmall,
@@ -354,12 +358,13 @@ fun SongRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                // Keep the rounded highlight without allocating a clip layer
-                // for every item in a long, frequently scrolled list.
-                .background(
-                    if (isCurrent) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.52f)
-                    else Color.Transparent,
-                    shape = RoundedCornerShape(18.dp),
+                // Draw a highlight only for the active item. Idle rows stay
+                // on the simplest possible draw path while the list is scrolling.
+                .then(
+                    if (isCurrent) Modifier.background(
+                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.52f),
+                        shape = RoundedCornerShape(18.dp),
+                    ) else Modifier,
                 )
                 .then(
                     if (onLongClick != null) {
