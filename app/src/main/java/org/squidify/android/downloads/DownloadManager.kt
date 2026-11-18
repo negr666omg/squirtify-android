@@ -30,6 +30,7 @@ import org.squidify.android.data.UserStorage
 import org.squidify.android.util.AppLog
 import java.io.File
 import java.io.IOException
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
@@ -99,6 +100,31 @@ class DownloadManager(
             ?: File(context.filesDir, "download-parts")
         if (!dir.exists()) dir.mkdirs()
         return dir
+    }
+
+    /**
+     * Each job owns a distinct staging file. Output file names are only unique
+     * within an album, so using fileName alone lets parallel jobs overwrite
+     * each other's partial bytes.
+     *
+     * Migrate a legacy .part file only when no other job shares that output
+     * name; otherwise its owner is ambiguous and it must not be reused.
+     */
+    @Synchronized
+    private fun stagingPartFile(job: DownloadJob): File {
+        val dir = stagingDir()
+        val target = File(dir, stagingPartName(job.id, job.fileName))
+        if (!target.exists()) {
+            val legacy = File(dir, job.fileName + ".part")
+            val ambiguous = _jobs.value.any { it.id != job.id && it.fileName == job.fileName }
+            if (!ambiguous && legacy.isFile) {
+                if (!legacy.renameTo(target)) {
+                    runCatching { legacy.copyTo(target, overwrite = false) }
+                }
+                if (target.isFile) legacy.delete()
+            }
+        }
+        return target
     }
 
     /** Human-readable location shown in the UI. */
@@ -450,7 +476,7 @@ class DownloadManager(
         activeCalls[id]?.cancel()
         _jobs.value = _jobs.value.filterNot { it.id == id }
         job?.let {
-            File(stagingDir(), it.fileName + ".part").delete()
+            stagingPartFile(it).delete()
             File(storage.legacyDir(), it.fileName).delete()
         }
         AppLog.i(TAG, "Cancelled: '${job?.title ?: id}'")
@@ -461,7 +487,7 @@ class DownloadManager(
     fun retry(id: String) {
         val job = _jobs.value.firstOrNull { it.id == id } ?: return
         AppLog.i(TAG, "Retrying: '${job.title}'")
-        File(stagingDir(), job.fileName + ".part").delete()
+        stagingPartFile(job).delete()
         update(id) {
             it.copy(status = DownloadStatus.QUEUED, error = null, bytes = 0, totalBytes = 0, contentUri = null)
         }
@@ -643,7 +669,7 @@ class DownloadManager(
     private suspend fun runJob(job: DownloadJob) {
         val id = job.id
         AppLog.i(TAG, "Starting: '${job.title}' [${job.qualityLabel}]")
-        val part = File(stagingDir(), job.fileName + ".part")
+        val part = stagingPartFile(job)
         try {
             if (cancellations.contains(id)) throw kotlinx.coroutines.CancellationException("paused before start")
             // resolve KHInsider track page -> direct file URL (audio only)
