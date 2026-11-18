@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
@@ -52,6 +53,7 @@ fun MiniPlayer(
     if (song == null) return
     val player = App.graph().player
     val isPlaying by player.isPlaying.collectAsState()
+    val isBuffering by player.isBuffering.collectAsState()
     // plain States (no `by`): they are read inside the progress lambda below,
     // i.e. during DRAW — zero recomposition while a track plays
     val position = player.positionMs.collectAsState()
@@ -120,7 +122,12 @@ fun MiniPlayer(
                     interactionSource = playIsr,
                     modifier = Modifier.pressScale(playIsr, pressedScale = 0.88f),
                 ) {
-                    if (isPlaying) {
+                    if (isBuffering) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else if (isPlaying) {
                         Icon(
                             imageVector = SqIcons.Pause,
                             contentDescription = "Pause",
