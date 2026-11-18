@@ -637,7 +637,10 @@ class DownloadManager(
         try {
             if (cancellations.contains(id)) throw kotlinx.coroutines.CancellationException("paused before start")
             // resolve KHInsider track page -> direct file URL (audio only)
-            var url = job.fileUrl
+            // Always resolve a fresh KHInsider URL when a job starts.
+            // A persisted signed/direct URL may have expired while queued or
+            // while the previous partial download was paused.
+            var url = if (job.source == DownloadSource.KHINSIDER && job.kind == "audio") null else job.fileUrl
             if (url == null && job.source == DownloadSource.KHINSIDER && job.kind == "audio") {
                 AppLog.d(TAG, "Resolving KHInsider track page → direct URL…")
                 val res = khi.resolve(job.requestUrl)
@@ -691,14 +694,36 @@ class DownloadManager(
                 }
                 val totalFromServer = resp.header("Content-Length")?.toLongOrNull() ?: -1L
                 val isRange = resp.code == 206
-                if (!isRange && startByte > 0) {
+                var rangeTotal = -1L
+                if (isRange) {
+                    val contentRange = resp.header("Content-Range")
+                    val match = contentRange?.let {
+                        Regex("""^bytes (\\d+)-(\\d+)/(\\d+|\\*)$""").matchEntire(it.trim())
+                    }
+                    val rangeStart = match?.groupValues?.get(1)?.toLongOrNull()
+                    val rangeEnd = match?.groupValues?.get(2)?.toLongOrNull()
+                    rangeTotal = match?.groupValues?.get(3)?.toLongOrNull() ?: -1L
+                    if (rangeStart != startByte || rangeEnd == null || rangeEnd < startByte) {
+                        part.delete()
+                        throw IOException("Server returned an invalid byte range while resuming")
+                    }
+                    if (totalFromServer > 0 && rangeEnd - startByte + 1L != totalFromServer) {
+                        part.delete()
+                        throw IOException("Server returned a mismatched Content-Length for the byte range")
+                    }
+                } else if (startByte > 0) {
                     AppLog.w(TAG, "Server ignored Range for '${job.title}' — restarting from zero")
                     part.delete()
                     startByte = 0
                 }
                 val contentType = resp.header("Content-Type")
                 AppLog.d(TAG, "'${job.title}': HTTP ${resp.code}, ${FmtSafe.bytes(totalFromServer)}, type=$contentType")
-                val total = if (isRange) startByte + totalFromServer else totalFromServer
+                val total = when {
+                    rangeTotal > 0 -> rangeTotal
+                    isRange && totalFromServer > 0 -> startByte + totalFromServer
+                    isRange -> -1L
+                    else -> totalFromServer
+                }
                 update(id) { it.copy(bytes = startByte, totalBytes = if (total > 0) total else 0L) }
 
                 val body = resp.body ?: throw IOException("Empty body")
@@ -736,6 +761,9 @@ class DownloadManager(
                 }
 
                 if (cancellations.contains(id)) throw kotlinx.coroutines.CancellationException("paused after transfer")
+                if (total > 0 && startByte != total) {
+                    throw IOException("Incomplete download: received ${startByte} of ${total} bytes")
+                }
 
                 // Embed the album cover into single track files
                 if (job.kind == "audio") {
