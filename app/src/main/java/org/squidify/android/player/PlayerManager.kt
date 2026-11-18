@@ -356,6 +356,7 @@ class PlayerManager(
         _isBuffering.value = shouldResume
         _stalled.value = false
         _playbackError.value = null
+        failedPlayRequest = null
         pendingSeekMs = null
         pendingSeekSongId = null
         AppLog.i(TAG, "Reattached in-memory queue (${queue.size} tracks), index=$index, resume=$shouldResume")
@@ -536,7 +537,17 @@ class PlayerManager(
                 error,
             )
             // Keep raw Media3 details (which can contain signed URLs) out of UI.
-            _playbackError.value = "Can't play this track (${error.errorCodeName}). Tap Retry to try again."
+            _playbackError.value = when {
+                error.errorCodeName.contains("NETWORK") ||
+                    error.errorCodeName.contains("HTTP") ||
+                    error.errorCodeName.contains("IO_") ->
+                    "Connection failed. Check your connection or VPN and retry."
+                error.errorCodeName.contains("DECOD") ->
+                    "This audio format couldn't be played. Try another quality."
+                error.errorCodeName.contains("PARSING") ->
+                    "The audio file appears to be invalid."
+                else -> "Couldn't play this track. Tap Retry to try again."
+            }
             _isPlaying.value = false
             _positionMs.value = positionSource()?.currentPosition?.coerceAtLeast(0L) ?: _positionMs.value
             _isBuffering.value = false
@@ -694,7 +705,7 @@ class PlayerManager(
                             _isPlaying.value = previousPlaying
                             _isBuffering.value = false
                             _stalled.value = false
-                            _playbackError.value = "Couldn't load KHInsider audio. Check your connection and retry."
+                            _playbackError.value = "KHInsider couldn't load this track. Check your connection and retry."
                         }
                         return@launch
                     }
@@ -744,7 +755,7 @@ class PlayerManager(
                     _isPlaying.value = activeP?.isPlaying ?: previousPlaying
                     _isBuffering.value = false
                     _stalled.value = false
-                    _playbackError.value = "Playback couldn't start. Check the connection and retry."
+                    _playbackError.value = "Playback couldn't start. Check your connection and retry."
                 }
             } finally {
                 if (gen == playGeneration && activeP?.playbackState != Player.STATE_BUFFERING) {
