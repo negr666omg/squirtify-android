@@ -41,6 +41,7 @@ import kotlinx.coroutines.launch
 import org.squidify.android.App
 import org.squidify.android.data.KhiAlbumSummary
 import org.squidify.android.data.Song
+import org.squidify.android.downloads.downloadStatusFor
 import org.squidify.android.player.PlayerSong
 import org.squidify.android.ui.components.KhiDownloadQualityDialog
 import org.squidify.android.ui.components.MiniPlayer
@@ -79,8 +80,8 @@ object Routes {
     fun genre(name: String) = "genre/${Uri.encode(name)}"
     fun playlist(id: String) = "playlist/$id"
 
-    fun khiAlbum(url: String, highlightTrackTitle: String? = null): String =
-        "khi/${Uri.encode(url)}" + (highlightTrackTitle?.let { "?t=${Uri.encode(it)}" } ?: "")
+    fun khiAlbum(url: String, highlightTrackUrl: String? = null): String =
+        "khi/${Uri.encode(url)}" + (highlightTrackUrl?.let { "?t=${Uri.encode(it)}" } ?: "")
 }
 
 private data class BottomDest(
@@ -150,7 +151,7 @@ fun AppNavHost(onExitApp: () -> Unit) {
                 val trackUrl = song.khiTrackUrl ?: song.khiDirectUrl ?: return
                 val albumUrl = trackUrl.substringBeforeLast('/')
                 if (albumUrl.isNotBlank()) {
-                    navController.navigate(Routes.khiAlbum(albumUrl, if (highlight) song.title else null))
+                    navController.navigate(Routes.khiAlbum(albumUrl, if (highlight) trackUrl else null))
                 }
             }
         }
@@ -315,7 +316,7 @@ fun AppNavHost(onExitApp: () -> Unit) {
                     KhiAlbumScreen(
                         albumUrl = url,
                         onBack = { navController.popBackStack() },
-                        highlightTrackTitle = highlight,
+                        highlightTrackUrl = highlight,
                     )
                 }
             }
@@ -339,10 +340,7 @@ fun AppNavHost(onExitApp: () -> Unit) {
                 },
                 isHearted = current?.id in favSongIds,
                 onDownload = { song -> pendingDownload = song },
-                downloadStatus = downloads.firstOrNull {
-                    (it.source == org.squidify.android.data.DownloadSource.SQUIDIFY && it.songId == current?.id) ||
-                        (it.source == org.squidify.android.data.DownloadSource.KHINSIDER && it.title == current?.title)
-                }?.status,
+                downloadStatus = current?.let { downloadStatusFor(it, downloads) },
                 lyricsProvider = { song, provider ->
                     if (song.source == org.squidify.android.data.DownloadSource.SQUIDIFY) {
                         graph.lyrics.forSong(
