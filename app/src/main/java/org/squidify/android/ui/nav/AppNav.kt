@@ -9,6 +9,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -20,10 +24,8 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -33,6 +35,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -183,42 +190,60 @@ fun AppNavHost(onExitApp: () -> Unit) {
                             Modifier.padding(bottom = 4.dp),
                         )
                     }
-                    NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                        tonalElevation = 0.dp,
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        tonalElevation = 2.dp,
+                        shadowElevation = 4.dp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                            .navigationBarsPadding(),
                     ) {
-                        destinations.forEach { dest ->
-                            NavigationBarItem(
-                                selected = currentRoute == dest.route,
-                                onClick = {
-                                    if (currentRoute != dest.route) {
-                                        // Coming from a stacked screen (album, artist,
-                                        // playlist…): PUSH the tab so Android back
-                                        // returns to that screen — back must mean back.
-                                        // Switching between tabs keeps the usual
-                                        // reset-to-tab-root behaviour.
-                                        val fromStackedScreen =
-                                            currentRoute != null && currentRoute !in destinations.map { it.route }
-                                        navController.navigate(dest.route) {
-                                            if (fromStackedScreen) {
-                                                launchSingleTop = true
-                                            } else {
-                                                popUpTo(Routes.HOME) { saveState = true }
-                                                launchSingleTop = true
-                                                restoreState = true
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp)
+                                .padding(horizontal = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        ) {
+                            destinations.forEach { dest ->
+                                val selected = currentRoute == dest.route
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (selected) MaterialTheme.colorScheme.secondaryContainer
+                                            else androidx.compose.ui.graphics.Color.Transparent,
+                                        )
+                                        .clickable {
+                                            if (currentRoute != dest.route) {
+                                                val fromStackedScreen =
+                                                    currentRoute != null && currentRoute !in destinations.map { it.route }
+                                                navController.navigate(dest.route) {
+                                                    if (fromStackedScreen) {
+                                                        launchSingleTop = true
+                                                    } else {
+                                                        popUpTo(Routes.HOME) { saveState = true }
+                                                        launchSingleTop = true
+                                                        restoreState = true
+                                                    }
+                                                }
                                             }
-                                        }
-                                    }
-                                },
-                                icon = {
+                                        },
+                                    contentAlignment = androidx.compose.ui.Alignment.Center,
+                                ) {
                                     Icon(
-                                        dest.icon,
+                                        imageVector = dest.icon,
                                         contentDescription = dest.label,
+                                        tint = if (selected) MaterialTheme.colorScheme.onSecondaryContainer
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(24.dp),
                                     )
-                                },
-                                label = { Text(dest.label) },
-                            )
+                                }
+                            }
                         }
                     }
                 }
