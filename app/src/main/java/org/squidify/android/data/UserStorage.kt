@@ -382,7 +382,9 @@ class UserStorage(private val context: Context) {
             val target = File(dir, fileName)
             if (target.exists()) target.delete()
             source.copyTo(target, overwrite = true)
-            return null
+            // Persist a concrete URI so offline lookup and deletion use the
+            // exact public file path on Android 8/9, not the app-private fallback.
+            return Uri.fromFile(target)
         }
     }
 
