@@ -147,12 +147,24 @@ fun NowPlayingScreen(
     }
 
     LaunchedEffect(current.id, tab, settings.lyricsProvider) {
-        if (tab == 1 && lyricsFor != "${current.id}/${settings.lyricsProvider}") {
-            lyricsFor = "${current.id}/${settings.lyricsProvider}"
+        val requestKey = "${current.id}/${settings.lyricsProvider}"
+        if (tab == 1 && lyricsFor != requestKey) {
+            lyricsFor = requestKey
             lyricsLoading = true
             lyrics = null
-            lyrics = try { lyricsProvider(current, settings.lyricsProvider) } catch (_: Exception) { null }
-            lyricsLoading = false
+            try {
+                val result = lyricsProvider(current, settings.lyricsProvider)
+                if (lyricsFor == requestKey) lyrics = result
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                // A track/provider/tab change cancels the old request. Clear
+                // only its marker so returning to the same track can retry.
+                if (lyricsFor == requestKey) lyricsFor = null
+                throw cancelled
+            } catch (_: Exception) {
+                if (lyricsFor == requestKey) lyrics = null
+            } finally {
+                if (lyricsFor == requestKey) lyricsLoading = false
+            }
         }
     }
 
@@ -807,6 +819,8 @@ fun QualityInfoSheet(
             infoError = null
             try {
                 info = graph.subsonic.getSong(song.id)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 infoError = e.message ?: e.javaClass.simpleName
             }
@@ -830,6 +844,8 @@ fun QualityInfoSheet(
                         durationMs = song.durationMs,
                     )
                 }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
             }
         }
