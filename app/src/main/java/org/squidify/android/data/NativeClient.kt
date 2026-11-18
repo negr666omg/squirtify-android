@@ -100,6 +100,7 @@ class NativeClient(
         }
         resp.use { response ->
             if (!response.isSuccessful) {
+                if (response.code == 401) jwt = null
                 AppLog.e("Native", "$path → HTTP ${response.code}")
                 throw IllegalStateException("HTTP ${response.code}")
             }
@@ -143,6 +144,7 @@ class NativeClient(
                 .build()
         }.use { response ->
             if (!response.isSuccessful) {
+                if (response.code == 401) jwt = null
                 AppLog.e("Native", "/api/song → HTTP ${response.code}")
                 return@withContext null
             }
