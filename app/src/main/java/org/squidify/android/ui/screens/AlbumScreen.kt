@@ -86,6 +86,8 @@ fun AlbumScreen(
             val (a, s) = graph.subsonic.getAlbum(albumId)
             album = a
             songs = s
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             error = e.message
         }
