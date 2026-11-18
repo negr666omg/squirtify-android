@@ -142,7 +142,7 @@ object AppLog {
     private fun parseLine(raw: String): Entry? {
         // MM-dd HH:mm:ss.SSS L/ TAG: message
         if (raw.length < 24) return null
-        val levelCh = raw.getOrNull(21)
+        val levelCh = raw.getOrNull(19)
         val level = when (levelCh) {
             'D' -> Level.DEBUG
             'I' -> Level.INFO
@@ -150,7 +150,7 @@ object AppLog {
             'E' -> Level.ERROR
             else -> return null
         }
-        val rest = raw.substring(24) // after "L/ "
+        val rest = raw.substring(22) // after timestamp + " L/ "
         val idx = rest.indexOf(": ")
         if (idx <= 0) return null
         val timeMs = try {
