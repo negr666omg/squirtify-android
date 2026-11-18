@@ -16,6 +16,7 @@ import org.squidify.android.data.KhiClient
 import org.squidify.android.data.ListenHistory
 import org.squidify.android.data.LyricsClient
 import org.squidify.android.data.NativeClient
+import org.squidify.android.data.OfflineLibraryRepository
 import org.squidify.android.data.SettingsRepository
 import org.squidify.android.data.SubsonicClient
 import org.squidify.android.data.UserStorage
@@ -24,6 +25,7 @@ import org.squidify.android.player.PlayerManager
 import org.squidify.android.util.AllFilesAccess
 import org.squidify.android.util.AppLog
 import org.squidify.android.util.CrashHandler
+import org.squidify.android.util.NetworkMonitor
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -53,6 +55,8 @@ class AppGraph(context: Context) {
 
     val lyrics = LyricsClient(http, subsonic)
 
+    val networkMonitor = NetworkMonitor(appContext)
+
     val settings = SettingsRepository(appContext, storage).also { repo ->
         repo.startCollection(scope)
     }
@@ -61,6 +65,8 @@ class AppGraph(context: Context) {
     val favorites = FavoritesRepository(storage)
 
     val history = ListenHistory(appContext, storage)
+
+    val offlineLibrary = OfflineLibraryRepository(storage)
 
     val downloads = DownloadManager(appContext, http, subsonic, khi, settings, storage)
 
@@ -167,6 +173,7 @@ class AppGraph(context: Context) {
         settings.reload()
         favorites.reload()
         history.reload()
+        offlineLibrary.reload()
         downloads.reloadRegistry()
         AppLog.i("Storage", "User data reloaded from the Squidify folder")
     }
