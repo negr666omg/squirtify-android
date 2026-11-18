@@ -748,15 +748,20 @@ class DownloadManager(
             }
         } finally {
             activeCalls.remove(id)
-            val shouldResume = resumeAfterPause.remove(id)
-            cancellations.remove(id)
-            activeJobs.remove(id)
-            if (shouldResume) {
-                update(id) {
-                    if (it.status == DownloadStatus.PAUSED) it.copy(status = DownloadStatus.QUEUED, error = null) else it
+            // Synchronize with pause()/resume(): otherwise a resume arriving
+            // between reading the flag and removing activeJobs could be lost.
+            val shouldResume = synchronized(this) {
+                val requested = resumeAfterPause.remove(id)
+                cancellations.remove(id)
+                activeJobs.remove(id)
+                if (requested) {
+                    update(id) {
+                        if (it.status == DownloadStatus.PAUSED) it.copy(status = DownloadStatus.QUEUED, error = null) else it
+                    }
                 }
-                kickService()
+                requested
             }
+            if (shouldResume) kickService()
             persistNow()
         }
     }
