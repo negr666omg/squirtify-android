@@ -34,7 +34,7 @@ jobs:
           gradle-version: "8.13"
 
       - name: Run unit tests and build APKs
-        run: gradle --no-daemon testDebugUnitTest assembleDebug assembleRelease
+        run: gradle --no-daemon testDebugUnitTest assembleDebug assemblePerf assembleRelease
 
       # Lint is diagnostic until the existing project-wide backlog is cleaned.
       # Keep the full report visible, but don't block APKs/tests on pre-existing findings.
@@ -70,6 +70,14 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Upload performance APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Squirtify-perf-1.7.5
+          path: app/build/outputs/apk/perf/app-perf.apk
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload unsigned release APK
         uses: actions/upload-artifact@v4
         with:

@@ -50,6 +50,16 @@ android {
         debug {
             applicationIdSuffix = ".debug"
         }
+        // Release-mode installable build for on-device performance testing.
+        // Uses the debug signing key because no production keystore is stored in the repo.
+        // A separate package keeps the user's normal installation untouched.
+        create("perf") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".perf"
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
     }
 
     compileOptions {
