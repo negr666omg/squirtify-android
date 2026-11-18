@@ -54,6 +54,7 @@ fun MiniPlayer(
     val player = App.graph().player
     val isPlaying by player.isPlaying.collectAsState()
     val isBuffering by player.isBuffering.collectAsState()
+    val playbackError by player.playbackError.collectAsState()
     // plain States (no `by`): they are read inside the progress lambda below,
     // i.e. during DRAW — zero recomposition while a track plays
     val position = player.positionMs.collectAsState()
@@ -116,6 +117,15 @@ fun MiniPlayer(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.marqueeIf(scroll),
                     )
+                    playbackError?.let { message ->
+                        Text(
+                            text = message,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 IconButton(
                     onClick = onTogglePlay,
