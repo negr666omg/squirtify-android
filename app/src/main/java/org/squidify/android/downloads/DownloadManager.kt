@@ -106,9 +106,12 @@ class DownloadManager(
 
     // ------------------------------------------------------------- lifecycle
 
+    @Synchronized
     fun start() {
-        load()
         if (workersStarted) return
+        // Load the registry exactly once. Calling start() after each enqueue
+        // must never replace newer in-memory jobs with an older disk snapshot.
+        load()
         workersStarted = true
         AppLog.i(TAG, "Download manager started (${_jobs.value.size} jobs on disk)")
         scope.launch { workerLoop(0) }
@@ -117,9 +120,17 @@ class DownloadManager(
     }
 
     /** Re-reads the registry (e.g. after the storage folder was granted). */
+    @Synchronized
     fun reloadRegistry() {
-        // keep any in-flight jobs; just refresh the persisted list on disk
+        // Re-read data after a storage migration, but do not discard jobs
+        // currently owned by a worker (their newest byte counts live in RAM).
+        val inFlight = _jobs.value.filter { it.id in activeJobs }
         load()
+        if (inFlight.isNotEmpty()) {
+            val ids = inFlight.map { it.id }.toSet()
+            _jobs.value = _jobs.value.filterNot { it.id in ids } + inFlight
+            persistNow()
+        }
     }
 
     private fun load() {
@@ -161,15 +172,33 @@ class DownloadManager(
     }
 
     private var lastPersist = 0L
+    private var pendingPersistJob: kotlinx.coroutines.Job? = null
 
     @Synchronized
     private fun persist() {
         val now = System.currentTimeMillis()
-        if (now - lastPersist > 400) {
+        val elapsed = now - lastPersist
+        if (elapsed >= 400L) {
             lastPersist = now
             persistNow()
+            pendingPersistJob?.cancel()
+            pendingPersistJob = null
         } else {
             pendingPersist = true
+            // Coalesce rapid byte-count updates, but guarantee the final
+            // state is written even when no later worker event calls flush().
+            if (pendingPersistJob?.isActive != true) {
+                pendingPersistJob = scope.launch {
+                    kotlinx.coroutines.delay(400L - elapsed)
+                    synchronized(this@DownloadManager) {
+                        if (pendingPersist) {
+                            lastPersist = System.currentTimeMillis()
+                            persistNow()
+                        }
+                        pendingPersistJob = null
+                    }
+                }
+            }
         }
     }
 
@@ -336,12 +365,18 @@ class DownloadManager(
 
     /** Full KHInsider album download: save every cover image in original format. */
     fun enqueueKhiAlbumArt(album: KhiAlbum) {
+        if (album.albumImages.isEmpty()) return
         album.albumImages.forEach { imageUrl ->
             val rawName = java.net.URLDecoder.decode(imageUrl.substringAfterLast('/'), "UTF-8")
             var name = sanitize(rawName)
             if (!name.contains('.')) name += ".jpg"
             enqueueCoverImage(album = album.name, url = khi.imageUrl(imageUrl), fileName = name)
         }
+        // Album art can be the only requested work (e.g. all audio tracks
+        // already exist). Persist and wake the workers even in that case.
+        persist()
+        start()
+        kickService()
     }
 
     private fun enqueueCoverImage(album: String, url: String?, fileName: String) {
