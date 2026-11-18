@@ -5,3 +5,4 @@
 /part of chat with glm 5.3.txt
 .gradle/
 **/build/
+squidify.keystore.properties
