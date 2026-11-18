@@ -183,14 +183,22 @@ class MainActivity : ComponentActivity() {
     private fun ensureAllFilesMigration(showToast: Boolean = false) {
         if (!AllFilesAccess.isGranted()) return
         val sp = getSharedPreferences("squidify_storage", MODE_PRIVATE)
-        if (!sp.getBoolean("all_files_migrated", false) && !allFilesMigrationInProgress) {
+        // Version 2 fixes an old precedence bug: SAF files must be copied
+        // before internal fallbacks, otherwise stale favorites/settings can
+        // overwrite the data the app actually read before migration.
+        val migrationVersion = sp.getInt("all_files_migration_version", 0)
+        val legacyFlag = sp.getBoolean("all_files_migrated", false)
+        if ((!legacyFlag || migrationVersion < 2) && !allFilesMigrationInProgress) {
             allFilesMigrationInProgress = true
             lifecycleScope.launch {
                 try {
                     App.graph().onAllFilesGranted()
                     // Mark complete only after copying and repository reloads
                     // return. A process death during migration can now retry.
-                    sp.edit().putBoolean("all_files_migrated", true).apply()
+                    sp.edit()
+                        .putBoolean("all_files_migrated", true)
+                        .putInt("all_files_migration_version", 2)
+                        .apply()
                     if (showToast) {
                         Toast.makeText(
                             this@MainActivity,
