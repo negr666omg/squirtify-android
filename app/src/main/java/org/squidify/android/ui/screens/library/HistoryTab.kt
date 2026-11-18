@@ -45,6 +45,7 @@ fun HistoryTab(
     val player = graph.player
     val queue by player.queue.collectAsState()
     val idx by player.currentIndex.collectAsState()
+    val isBuffering by player.isBuffering.collectAsState()
 
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -84,6 +85,7 @@ fun HistoryTab(
                         entry = e,
                         coverUrl = cover,
                         isCurrent = isCurrent,
+                        isLoading = isCurrent && isBuffering,
                         onClick = {
                             scope.launch {
                                 val songs = entries.map { it.toPlayerSong() }
@@ -102,6 +104,7 @@ private fun HistoryRow(
     entry: HistoryEntry,
     coverUrl: String?,
     isCurrent: Boolean,
+    isLoading: Boolean,
     onClick: () -> Unit,
 ) {
     Row(
@@ -141,6 +144,13 @@ private fun HistoryRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+        if (isLoading) {
+            androidx.compose.material3.CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+            )
+            Spacer(Modifier.width(8.dp))
         }
         if (entry.durationMs > 0) {
             Text(
