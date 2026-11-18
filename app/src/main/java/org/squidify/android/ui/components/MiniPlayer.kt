@@ -55,7 +55,9 @@ fun MiniPlayer(
     onOpen: () -> Unit,
 ) {
     if (song == null) return
-    val player = App.graph().player
+    val graph = App.graph()
+    val player = graph.player
+    val settings by graph.settings.state().collectAsState()
     val isPlaying by player.isPlaying.collectAsState()
     val isBuffering by player.isBuffering.collectAsState()
     val playbackError by player.playbackError.collectAsState()
@@ -64,7 +66,7 @@ fun MiniPlayer(
     val position = player.positionMs.collectAsState()
     val duration = player.durationMs.collectAsState()
 
-    val scroll = App.graph().settings.state().value.scrollingText
+    val scroll = settings.scrollingText
     val playIsr = remember { MutableInteractionSource() }
     val nextIsr = remember { MutableInteractionSource() }
     Surface(
@@ -116,7 +118,7 @@ fun MiniPlayer(
                         modifier = Modifier.marqueeIf(scroll),
                     )
                     Text(
-                        text = song.artist ?: "",
+                        text = if (settings.hideNowPlayingArtist) song.album.orEmpty() else song.artist.orEmpty(),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
