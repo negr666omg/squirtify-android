@@ -83,6 +83,12 @@ fun AlbumScreen(
     var showCoverViewer by remember { mutableStateOf(false) }
     val favAlbumIds by graph.favorites.albumIds.collectAsState()
 
+    LaunchedEffect(album, songs) {
+        val a = album ?: return@LaunchedEffect
+        val tracks = songs ?: return@LaunchedEffect
+        graph.offlineLibrary.cacheSquidify(a, tracks, a.coverArtUrl(600))
+    }
+
     LaunchedEffect(albumId, reload) {
         error = null
         try {
@@ -248,8 +254,9 @@ fun AlbumScreen(
                                         onClick = { showAlbumDownloadDialog = true },
                                         interactionSource = dlIsr,
                                         modifier = Modifier
-                                            .size(52.dp)
+                                            .size(56.dp)
                                             .pressScale(dlIsr, pressedScale = 0.92f),
+                                        shape = RoundedCornerShape(16.dp),
                                     ) {
                                         Icon(
                                             SqIcons.Download,
