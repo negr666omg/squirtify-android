@@ -103,6 +103,18 @@ fun AlbumScreen(
     val bufferProgress by player.bufferProgress.collectAsState()
     val isBufferingNow by player.isBuffering.collectAsState()
 
+    // Resolve download metadata once per update instead of scanning every
+    // download job for every visible song row during lazy-list composition.
+    val downloadBySongId = remember(downloads) {
+        downloads.asSequence()
+            .filter {
+                it.source == org.squidify.android.data.DownloadSource.SQUIDIFY &&
+                    it.songId != null
+            }
+            .associateBy { it.songId!! }
+    }
+    val currentSongId = queue.getOrNull(idx)?.id
+
     val listState = rememberLazyListState()
 
     // Scroll to (and mark) the highlighted track when opened from Now Playing
@@ -252,17 +264,14 @@ fun AlbumScreen(
 
                     items(list.size, key = { list[it].id }) { i ->
                         val song = list[i]
-                        val currentId = queue.getOrNull(idx)?.id
-                        val isCurrent = currentId == song.id
-                        val downloadStatus = downloads.firstOrNull {
-                            it.source == org.squidify.android.data.DownloadSource.SQUIDIFY && it.songId == song.id
-                        }?.status
+                        val isCurrent = currentSongId == song.id
+                        val download = downloadBySongId[song.id]
+                        val downloadStatus = download?.status
                         // Loading bar under the row: whole-track prefetch for
                         // playback, or an active download job
                         val progress = bufferProgress[song.id]
-                            ?: downloads.firstOrNull {
-                                it.source == org.squidify.android.data.DownloadSource.SQUIDIFY &&
-                                    it.songId == song.id && it.status == org.squidify.android.data.DownloadStatus.RUNNING
+                            ?: download?.takeIf {
+                                it.status == org.squidify.android.data.DownloadStatus.RUNNING
                             }?.progress
                         // The navigation highlight is TRANSIENT: it marks the track
                         // this screen was opened for (deep link from Now Playing)

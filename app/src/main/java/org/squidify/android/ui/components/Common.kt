@@ -85,37 +85,6 @@ fun Modifier.pressScale(
 }
 
 /**
- * Clickable with built-in M3 press physics (spring scale-down + ripple).
- * Drop-in replacement for Modifier.clickable on pill buttons and cards.
- */
-@Composable
-fun Modifier.bouncyClickable(
-    pressedScale: Float = 0.95f,
-    onClick: () -> Unit,
-): Modifier {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) pressedScale else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
-        label = "bouncyClick",
-    )
-    return this
-        .graphicsLayer {
-            scaleX = scale
-            scaleY = scale
-        }
-        .clickable(
-            interactionSource = interaction,
-            indication = ripple(),
-            onClick = onClick,
-        )
-}
-
-/**
  * Side-to-side scrolling text (marquee) when the string does not fit —
  * like every major music player does for long titles. Applied per the
  * user's "scrolling titles" setting.
@@ -211,7 +180,7 @@ fun AlbumCard(
             .then(sizeModifier)
             .clip(RoundedCornerShape(22.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .bouncyClickable(onClick = onClick)
+            .clickable(onClick = onClick)
             .padding(9.dp),
     ) {
         CoverArt(
@@ -354,10 +323,12 @@ fun SongRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
+                // Keep the rounded highlight without allocating a clip layer
+                // for every item in a long, frequently scrolled list.
                 .background(
                     if (isCurrent) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.52f)
                     else Color.Transparent,
+                    shape = RoundedCornerShape(18.dp),
                 )
                 .then(
                     if (onLongClick != null) {
@@ -397,10 +368,13 @@ fun SongRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            val sub = buildList {
-                song.artist?.let { add(it) }
-                if (showAlbum) song.album?.let { add(it) }
-            }.joinToString(" — ")
+            val artist = song.artist.orEmpty()
+            val album = song.album.orEmpty()
+            val sub = when {
+                showAlbum && artist.isNotEmpty() && album.isNotEmpty() -> "$artist — $album"
+                showAlbum && album.isNotEmpty() -> album
+                else -> artist
+            }
             if (sub.isNotEmpty()) {
                 Text(
                     text = sub,
