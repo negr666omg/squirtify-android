@@ -106,8 +106,21 @@ class PlayerManager(
         _playbackError.value = null
     }
 
-    /** Retry the selected track, forcing fresh KHInsider links when needed. */
+    private data class FailedPlayRequest(
+        val songs: List<PlayerSong>,
+        val index: Int,
+        val shuffled: Boolean,
+    )
+
+    private var failedPlayRequest: FailedPlayRequest? = null
+
+    /** Retry the failed selection, refreshing temporary KHInsider URLs. */
     fun retryCurrent() {
+        val failed = failedPlayRequest
+        if (failed != null) {
+            play(failed.songs, failed.index, shuffled = failed.shuffled, forceRefreshKhiUrls = true)
+            return
+        }
         val index = _currentIndex.value
         if (index !in _queue.value.indices) return
         val retryQueue = _queue.value.map { song ->
@@ -262,6 +275,13 @@ class PlayerManager(
 
     fun attach(active: Player, standby: Player, rebind: (Player) -> Unit) {
         if (activeP === active) return
+        // The service can be recreated while the Application graph (and this
+        // manager) survives. Capture the queue before replacing the released refs.
+        val preservedQueue = _queue.value
+        val preservedIndex = _currentIndex.value
+        val preservedPosition = _positionMs.value
+        val shouldResume = _isPlaying.value
+
         activeP = active
         standbyP = standby
         sessionRebinder = rebind
@@ -269,14 +289,10 @@ class PlayerManager(
         active.addListener(activeListener)
         standby.addListener(standbyListener)
         _repeatMode.value = active.repeatMode
-        AppLog.i(TAG, "Two players attached (active + crossfade standby); restoring last queue…")
+        AppLog.i(TAG, "Two players attached (active + crossfade standby)")
         scope.launch {
             val pending = pendingPlayRequest
-            if (pending == null) {
-                tryRestoreQueue()
-            } else {
-                // the user already chose something while the service was still
-                // starting — their pick wins over the server-saved queue
+            if (pending != null) {
                 AppLog.i(TAG, "Replaying the play request made before the player was ready")
                 pendingPlayRequest = null
                 @Suppress("UNCHECKED_CAST")
@@ -286,8 +302,63 @@ class PlayerManager(
                     pending[2] as Boolean,
                     pending.getOrNull(3) as? Boolean ?: false,
                 )
+            } else if (preservedQueue.isNotEmpty()) {
+                restoreAttachedQueue(active, preservedQueue, preservedIndex, preservedPosition, shouldResume)
+            } else {
+                tryRestoreQueue()
             }
         }
+    }
+
+    /**
+     * Rebuild the timeline when PlaybackService is recreated in the same app
+     * process. The UI queue outlives the service-owned ExoPlayers, so skipping
+     * this step leaves a visible but completely inert player.
+     */
+    private suspend fun restoreAttachedQueue(
+        player: Player,
+        songs: List<PlayerSong>,
+        requestedIndex: Int,
+        positionMs: Long,
+        shouldResume: Boolean,
+    ) {
+        if (player !== activeP || songs.isEmpty()) return
+        val index = requestedIndex.coerceIn(0, songs.lastIndex)
+        val restoredSongs = songs.toMutableList()
+        val current = restoredSongs[index]
+        if (current.source == org.squidify.android.data.DownloadSource.KHINSIDER &&
+            !current.khiTrackUrl.isNullOrBlank()
+        ) {
+            try {
+                // Reuse KhiClient's short-lived resolver cache when possible;
+                // if the link expired, refresh it before preparing the new player.
+                restoredSongs[index] = resolveKhi(current)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                // Keep the previous signed URL as a fallback. ExoPlayer will
+                // report a proper playback error if that URL has expired too.
+                AppLog.w(TAG, "Could not refresh the restored KHInsider URL: ${error.message}")
+            }
+        }
+        if (player !== activeP) return
+        val queue = restoredSongs.toList()
+        _queue.value = queue
+        baseQueue = queue
+        timeOffsetBaseMs = 0L
+        player.setMediaItems(queue.map { buildMediaItem(it) }, index, positionMs.coerceAtLeast(0L))
+        player.prepare()
+        player.playWhenReady = shouldResume
+        _currentIndex.value = index
+        _positionMs.value = positionMs.coerceAtLeast(0L)
+        _durationMs.value = queue[index].durationMs
+        _isPlaying.value = shouldResume
+        _isBuffering.value = shouldResume
+        _stalled.value = false
+        _playbackError.value = null
+        pendingSeekMs = null
+        pendingSeekSongId = null
+        AppLog.i(TAG, "Reattached in-memory queue (${queue.size} tracks), index=$index, resume=$shouldResume")
     }
 
     private val activeListener = object : Player.Listener {
@@ -466,8 +537,12 @@ class PlayerManager(
             )
             // Keep raw Media3 details (which can contain signed URLs) out of UI.
             _playbackError.value = "Can't play this track (${error.errorCodeName}). Tap Retry to try again."
+            _isPlaying.value = false
+            _positionMs.value = positionSource()?.currentPosition?.coerceAtLeast(0L) ?: _positionMs.value
             _isBuffering.value = false
             _stalled.value = false
+            pendingSeekMs = null
+            pendingSeekSongId = null
         }
     }
 
@@ -549,6 +624,7 @@ class PlayerManager(
             }
         }
         _playbackError.value = null
+        failedPlayRequest = null
         AppLog.i(TAG, "Track → ${currentSong?.title ?: "?"} (index ${p.currentMediaItemIndex})")
         currentSong?.let { history.record(it) }
         maybePrefetchNext()
@@ -568,6 +644,7 @@ class PlayerManager(
         playGeneration++
         healedSongs.clear()
         val gen = playGeneration
+        failedPlayRequest = FailedPlayRequest(songs, startIndex.coerceIn(0, songs.lastIndex), shuffled)
         val previousQueue = _queue.value
         val previousBaseQueue = baseQueue
         val previousIndex = _currentIndex.value
@@ -688,6 +765,7 @@ class PlayerManager(
         _queue.value = songs
         timeOffsetBaseMs = 0L
         p.setMediaItems(songs.map { buildMediaItem(it) }, idx, posMs)
+        failedPlayRequest = null
         p.prepare()
         p.playWhenReady = true
         _currentIndex.value = idx
