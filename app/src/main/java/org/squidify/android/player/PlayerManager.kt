@@ -115,7 +115,7 @@ class PlayerManager(
                 song.copy(khiDirectUrl = null)
             } else song
         }
-        play(retryQueue, index, shuffled = _shuffle.value)
+        play(retryQueue, index, shuffled = _shuffle.value, forceRefreshKhiUrls = true)
     }
 
     private val _positionMs = MutableStateFlow(0L)
@@ -284,6 +284,7 @@ class PlayerManager(
                     pending[0] as List<PlayerSong>,
                     pending[1] as Int,
                     pending[2] as Boolean,
+                    pending.getOrNull(3) as? Boolean ?: false,
                 )
             }
         }
@@ -555,7 +556,12 @@ class PlayerManager(
 
     // ------------------------------------------------------------ playback
 
-    fun play(songs: List<PlayerSong>, startIndex: Int = 0, shuffled: Boolean = false) {
+    fun play(
+        songs: List<PlayerSong>,
+        startIndex: Int = 0,
+        shuffled: Boolean = false,
+        forceRefreshKhiUrls: Boolean = false,
+    ) {
         if (songs.isEmpty()) return
         cancelPendingSwitch()
         cancelCrossfade()
@@ -585,7 +591,7 @@ class PlayerManager(
             // the playback service hasn't attached its players yet (very fast
             // tap after launch) — remember the request and replay it on attach
             AppLog.i(TAG, "Player not ready yet — deferring play of '${songs[optimisticIdx].title}'")
-            pendingPlayRequest = arrayOf(songs, optimisticIdx, shuffled)
+            pendingPlayRequest = arrayOf(songs, optimisticIdx, shuffled, forceRefreshKhiUrls)
             return
         }
         scope.launch {
@@ -594,7 +600,7 @@ class PlayerManager(
                 // resolve any unresolved KHInsider tracks (e.g. replay from history)
                 if (songs.any { it.source == org.squidify.android.data.DownloadSource.KHINSIDER && it.khiDirectUrl == null }) {
                     prepared = try {
-                        resolveKhiQueue(songs)
+                        resolveKhiQueue(songs, forceRefresh = forceRefreshKhiUrls)
                     } catch (e: kotlinx.coroutines.CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -1234,7 +1240,7 @@ class PlayerManager(
         scope.launch {
             _isBuffering.value = true
             try {
-                val fresh = resolveKhi(song)
+                val fresh = resolveKhi(song, forceRefresh = true)
                 // Resolving a direct URL can take long enough for the queue
                 // or crossfade roles to change. Re-acquire and validate the
                 // currently audible player instead of mutating a stale one.
@@ -1323,9 +1329,9 @@ class PlayerManager(
             .build()
     }
 
-    private suspend fun resolveKhi(song: PlayerSong): PlayerSong {
+    private suspend fun resolveKhi(song: PlayerSong, forceRefresh: Boolean = false): PlayerSong {
         val url = song.khiTrackUrl ?: return song
-        val res = khi.resolve(url)
+        val res = khi.resolve(url, forceRefresh = forceRefresh)
         val format = when (settings.state().value.khiQuality) {
             KhiQuality.FLAC -> "flac"
             KhiQuality.MP3 -> "mp3"
@@ -1337,7 +1343,10 @@ class PlayerManager(
     }
 
     /** Resolve all KHI tracks before starting playback (parallel, bounded). */
-    suspend fun resolveKhiQueue(songs: List<PlayerSong>): List<PlayerSong> = coroutineScope {
+    suspend fun resolveKhiQueue(
+        songs: List<PlayerSong>,
+        forceRefresh: Boolean = false,
+    ): List<PlayerSong> = coroutineScope {
         val sem = Semaphore(6)
         songs.map { song ->
             async {
@@ -1346,7 +1355,7 @@ class PlayerManager(
                 if (isKhi && shouldResolveKhiTrack(song.khiDirectUrl != null, hasLocalFile)) {
                     sem.acquire()
                     try {
-                        resolveKhi(song)
+                        resolveKhi(song, forceRefresh = forceRefresh)
                     } finally {
                         sem.release()
                     }
