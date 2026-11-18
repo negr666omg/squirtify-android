@@ -31,6 +31,8 @@ fun GenreScreen(genreName: String, onBack: () -> Unit, onAlbumClick: (Album) -> 
         try {
             albums = graph.subsonic.getAlbumList2("byGenre", size = 60, genre = genreName)
             error = null
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             error = e.message
         }
