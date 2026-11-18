@@ -58,6 +58,25 @@ class NativeClient(
         }
     }
 
+    /**
+     * Executes an authenticated API request once, refreshes an expired JWT
+     * after an actual HTTP 401 response, then retries exactly once.
+     *
+     * The old retry wrapper only caught exceptions thrown by execute(), but
+     * OkHttp returns HTTP 401 as a normal Response, so it never retried.
+     */
+    private suspend fun executeAuthorized(
+        requestForToken: (String) -> Request,
+    ): okhttp3.Response {
+        val first = http.newCall(requestForToken(token())).execute()
+        if (first.code != 401) return first
+
+        first.close()
+        jwt = null
+        AppLog.w("Native", "API returned HTTP 401; refreshing the session token")
+        return http.newCall(requestForToken(token())).execute()
+    }
+
     private suspend fun <T> getJson(
         path: String,
         query: Map<String, String>,
@@ -71,21 +90,20 @@ class NativeClient(
                 .append('=')
                 .append(java.net.URLEncoder.encode(v, "UTF-8"))
         }
-        val resp = runWithRetry {
-            val req = Request.Builder()
-                .url(urlBuilder.toString())
-                .header("x-nd-authorization", "Bearer ${token()}")
+        val url = urlBuilder.toString()
+        val resp = executeAuthorized { bearer ->
+            Request.Builder()
+                .url(url)
+                .header("x-nd-authorization", "Bearer $bearer")
                 .header("Accept", "application/json")
                 .build()
-            http.newCall(req).execute()
         }
-        resp.use { r ->
-            if (!r.isSuccessful) {
-                if (r.code == 401) jwt = null // force re-login next call
-                AppLog.e("Native", "$path → HTTP ${r.code}")
-                throw IllegalStateException("HTTP ${r.code}")
+        resp.use { response ->
+            if (!response.isSuccessful) {
+                AppLog.e("Native", "$path → HTTP ${response.code}")
+                throw IllegalStateException("HTTP ${response.code}")
             }
-            val el = json.parseToJsonElement(r.body!!.string())
+            val el = json.parseToJsonElement(response.body!!.string())
             val arr = when (el) {
                 is JsonArray -> el
                 is JsonObject -> {
@@ -95,17 +113,6 @@ class NativeClient(
                 else -> JsonArray(emptyList())
             }
             parse(arr)
-        }
-    }
-
-    private inline fun <T> runWithRetry(block: () -> T): T {
-        return try {
-            block()
-        } catch (e: IllegalStateException) {
-            if (e.message?.contains("401") == true) {
-                jwt = null
-                block()
-            } else throw e
         }
     }
 
@@ -127,14 +134,19 @@ class NativeClient(
     ) { arr -> arr.map { json.decodeFromJsonElement(NativeSong.serializer(), it) } }
 
     suspend fun song(id: String): NativeSong? = withContext(Dispatchers.IO) {
-        val req = Request.Builder()
-            .url("$serverUrl/api/song/${java.net.URLEncoder.encode(id, "UTF-8")}")
-            .header("x-nd-authorization", "Bearer ${token()}")
-            .header("Accept", "application/json")
-            .build()
-        http.newCall(req).execute().use { r ->
-            if (!r.isSuccessful) return@withContext null
-            val el = json.parseToJsonElement(r.body!!.string())
+        val url = "$serverUrl/api/song/${java.net.URLEncoder.encode(id, "UTF-8")}"
+        executeAuthorized { bearer ->
+            Request.Builder()
+                .url(url)
+                .header("x-nd-authorization", "Bearer $bearer")
+                .header("Accept", "application/json")
+                .build()
+        }.use { response ->
+            if (!response.isSuccessful) {
+                AppLog.e("Native", "/api/song → HTTP ${response.code}")
+                return@withContext null
+            }
+            val el = json.parseToJsonElement(response.body!!.string())
             val obj = when (el) {
                 is JsonObject -> el["data"] as? JsonObject ?: el
                 else -> null
