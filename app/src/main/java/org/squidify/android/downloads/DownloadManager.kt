@@ -3,6 +3,8 @@ package org.squidify.android.downloads
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -129,6 +131,25 @@ class DownloadManager(
 
     /** Human-readable location shown in the UI. */
     fun musicLocationLabel(): String = storage.downloadsLocationLabel()
+
+    /**
+     * Older versions stored Android 8/9 downloads in the public Music folder
+     * but wrote no contentUri into the registry. Keep those downloads playable
+     * and deletable after upgrading; new versions persist a file:// URI.
+     */
+    private fun finishedFileFor(job: DownloadJob): File? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            val album = UserStorage.sanitizeSegment(job.album ?: job.artist ?: "Unknown Album")
+            val publicDir = File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC),
+                "Squidify/Downloads/" + album,
+            )
+            val publicFile = File(publicDir, job.fileName)
+            if (publicFile.isFile && publicFile.length() > 0L) return publicFile
+        }
+        return File(storage.legacyDir(), job.fileName)
+            .takeIf { it.isFile && it.length() > 0L }
+    }
 
     // ------------------------------------------------------------- lifecycle
 
@@ -517,8 +538,7 @@ class DownloadManager(
                 AppLog.w(TAG, "Delete failed for '${job.title}' ($uri)")
             }
         } else {
-            val f = File(storage.legacyDir(), job.fileName)
-            ok = if (f.exists()) f.delete() else false
+            ok = finishedFileFor(job)?.delete() == true
         }
         _jobs.value = _jobs.value.filterNot { it.id == job.id }
         persist()
@@ -532,11 +552,8 @@ class DownloadManager(
             it.source == DownloadSource.SQUIDIFY && it.songId == songId && it.status == DownloadStatus.DONE
         } ?: return null
         val content = job.contentUri
-        if (content != null) {
-            return if (storage.documentExists(content)) Uri.parse(content) else null
-        }
-        val f = File(storage.legacyDir(), job.fileName)
-        return if (f.exists() && f.length() > 0) Uri.fromFile(f) else null
+        if (content != null && storage.documentExists(content)) return Uri.parse(content)
+        return finishedFileFor(job)?.let(Uri::fromFile)
     }
 
     /** Local playable Uri for a downloaded KHInsider track (matched by track page URL). */
@@ -546,11 +563,8 @@ class DownloadManager(
                 it.requestUrl == trackUrl && it.status == DownloadStatus.DONE
         } ?: return null
         val content = job.contentUri
-        if (content != null) {
-            return if (storage.documentExists(content)) Uri.parse(content) else null
-        }
-        val f = File(storage.legacyDir(), job.fileName)
-        return if (f.exists() && f.length() > 0) Uri.fromFile(f) else null
+        if (content != null && storage.documentExists(content)) return Uri.parse(content)
+        return finishedFileFor(job)?.let(Uri::fromFile)
     }
 
     /** All finished audio downloads (the offline library shown in the UI). */
@@ -581,8 +595,8 @@ class DownloadManager(
             var missing = 0
             for (job in doneJobs) {
                 val exists = when {
-                    job.contentUri != null -> storage.documentExists(job.contentUri)
-                    else -> File(storage.legacyDir(), job.fileName).let { it.exists() && it.length() > 0 }
+                    job.contentUri != null && storage.documentExists(job.contentUri) -> true
+                    else -> finishedFileFor(job) != null
                 }
                 if (!exists) {
                     missing++
@@ -656,7 +670,12 @@ class DownloadManager(
 
     @Synchronized
     private fun pickNext(): DownloadJob? {
-        val next = _jobs.value.firstOrNull { it.status == DownloadStatus.QUEUED } ?: return null
+        // A failed job can be retried while its previous worker is still
+        // unwinding. Never let another worker reserve that same ID until the
+        // previous run has released its reservation in finally.
+        val next = _jobs.value.firstOrNull {
+            it.status == DownloadStatus.QUEUED && it.id !in activeJobs
+        } ?: return null
         // Reserve before returning; a second worker cannot select the same job.
         _jobs.value = _jobs.value.map {
             if (it.id == next.id) it.copy(status = DownloadStatus.RUNNING, error = null) else it
@@ -669,8 +688,12 @@ class DownloadManager(
     private suspend fun runJob(job: DownloadJob) {
         val id = job.id
         AppLog.i(TAG, "Starting: '${job.title}' [${job.qualityLabel}]")
-        val part = stagingPartFile(job)
+        var partFile: File? = null
         try {
+            // File/permission failures here must still pass through finally so
+            // activeJobs cannot retain a dead reservation forever.
+            val part = stagingPartFile(job)
+            partFile = part
             if (cancellations.contains(id)) throw kotlinx.coroutines.CancellationException("paused before start")
             // resolve KHInsider track page -> direct file URL (audio only)
             // Always resolve a fresh KHInsider URL when a job starts.
@@ -806,26 +829,44 @@ class DownloadManager(
                 if (cancellations.contains(id)) throw kotlinx.coroutines.CancellationException("paused before publishing")
                 val finalSize = part.length()
                 val finalUri = publishToMusic(job, part)
-                part.delete()
-                update(id) {
-                    it.copy(
-                        status = DownloadStatus.DONE,
-                        bytes = finalSize,
-                        totalBytes = finalSize,
-                        completedAt = System.currentTimeMillis(),
-                        contentUri = finalUri?.toString(),
-                    )
+                // Publication copies the staged file into SAF/MediaStore/public
+                // storage. Pause/cancel can arrive during that suspend call, so
+                // serialize the final state transition with the UI controls.
+                val committed = synchronized(this) {
+                    val current = _jobs.value.firstOrNull { it.id == id }
+                    val cancelled = cancellations.contains(id) ||
+                        current == null ||
+                        current.status == DownloadStatus.PAUSED
+                    if (!cancelled) {
+                        part.delete()
+                        update(id) {
+                            it.copy(
+                                status = DownloadStatus.DONE,
+                                bytes = finalSize,
+                                totalBytes = finalSize,
+                                completedAt = System.currentTimeMillis(),
+                                contentUri = finalUri?.toString(),
+                            )
+                        }
+                    }
+                    !cancelled
+                }
+                if (!committed) {
+                    finalUri?.let { storage.deleteDocument(it.toString()) }
+                    throw kotlinx.coroutines.CancellationException("paused while publishing")
                 }
                 val where = finalUri?.toString() ?: File(storage.legacyDir(), job.fileName).absolutePath
                 AppLog.i(TAG, "Completed: '${job.title}' — ${FmtSafe.bytes(finalSize)} → $where")
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
-            update(id) { it.copy(status = DownloadStatus.PAUSED, bytes = part.length(), error = null) }
-            AppLog.i(TAG, "Paused: '${job.title}' — ${FmtSafe.bytes(part.length())} kept for resume")
+            val bytes = partFile?.length() ?: job.bytes
+            update(id) { it.copy(status = DownloadStatus.PAUSED, bytes = bytes, error = null) }
+            AppLog.i(TAG, "Paused: '${job.title}' — ${FmtSafe.bytes(bytes)} kept for resume")
         } catch (e: IOException) {
             if (cancellations.contains(id) || _jobs.value.firstOrNull { it.id == id }?.status == DownloadStatus.PAUSED) {
-                update(id) { it.copy(status = DownloadStatus.PAUSED, bytes = part.length(), error = null) }
-                AppLog.i(TAG, "Paused: '${job.title}' — ${FmtSafe.bytes(part.length())} kept for resume")
+                val bytes = partFile?.length() ?: job.bytes
+                update(id) { it.copy(status = DownloadStatus.PAUSED, bytes = bytes, error = null) }
+                AppLog.i(TAG, "Paused: '${job.title}' — ${FmtSafe.bytes(bytes)} kept for resume")
             } else {
                 val msg = "${e.javaClass.simpleName}: ${e.message ?: "I/O error"}"
                 AppLog.e(TAG, "Failed: '${job.title}' — $msg", e)
@@ -835,8 +876,9 @@ class DownloadManager(
             // Catch fatal worker failures without confusing a user pause with
             // a failed download.
             if (cancellations.contains(id) || _jobs.value.firstOrNull { it.id == id }?.status == DownloadStatus.PAUSED) {
-                update(id) { it.copy(status = DownloadStatus.PAUSED, bytes = part.length(), error = null) }
-                AppLog.i(TAG, "Paused: '${job.title}' — ${FmtSafe.bytes(part.length())} kept for resume")
+                val bytes = partFile?.length() ?: job.bytes
+                update(id) { it.copy(status = DownloadStatus.PAUSED, bytes = bytes, error = null) }
+                AppLog.i(TAG, "Paused: '${job.title}' — ${FmtSafe.bytes(bytes)} kept for resume")
             } else {
                 val msg = "${e.javaClass.simpleName}: ${e.message ?: "Unknown error"}"
                 AppLog.e(TAG, "Failed: '${job.title}' — $msg", e)
