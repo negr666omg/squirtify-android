@@ -22,6 +22,7 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionCommands
+import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -262,7 +263,7 @@ class PlaybackService : MediaSessionService() {
             when (customCommand.customAction) {
                 ACTION_TOGGLE_FAVOURITE -> {
                     val song = App.graph().player.currentSong
-                        ?: return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
+                        ?: return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
                     val nowFav = App.graph().favorites.toggleSong(song)
                     AppLog.i(TAG, "Shade: '${song.title}' ${if (nowFav) "added to" else "removed from"} favourites")
                     refreshMediaButtonPreferences()
@@ -282,7 +283,7 @@ class PlaybackService : MediaSessionService() {
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
             }
-            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
+            return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
         }
     }
 
