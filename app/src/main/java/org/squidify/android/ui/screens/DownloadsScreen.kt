@@ -367,6 +367,7 @@ private fun LibraryTrackRow(
 ) {
     val queue by App.graph().player.queue.collectAsState()
     val idx by App.graph().player.currentIndex.collectAsState()
+    val isBuffering by App.graph().player.isBuffering.collectAsState()
     val currentId = queue.getOrNull(idx)?.id
     val isCurrent = currentId == (job.songId ?: "khi:${job.requestUrl}")
 
@@ -406,7 +407,12 @@ private fun LibraryTrackRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        if (isCurrent) {
+        if (isCurrent && isBuffering) {
+            androidx.compose.material3.CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+            )
+        } else if (isCurrent) {
             Icon(
                 imageVector = Icons.Filled.PlayArrow,
                 contentDescription = "Now playing",
