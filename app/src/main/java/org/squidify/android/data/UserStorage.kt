@@ -498,7 +498,10 @@ class UserStorage(private val context: Context) {
 
         fun sanitizeSegment(name: String): String {
             val cleaned = name.replace(Regex("""[\\/:*?"<>|\u0000]"""), "_").trim()
-            return if (cleaned.length > 120) cleaned.take(120) else cleaned.ifBlank { "Unknown" }
+            // A dot-only path component resolves to the current/parent folder,
+            // not to a child album directory.
+            val safe = cleaned.takeUnless { it.isBlank() || it == "." || it == ".." } ?: "Unknown"
+            return if (safe.length > 120) safe.take(120) else safe
         }
     }
 }
