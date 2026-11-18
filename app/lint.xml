@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- Media3 marks several deliberately used APIs as unstable. The project
+         explicitly opts into that API surface; keep lint checking every other
+         issue while acknowledging this one documented opt-in. -->
+    <issue id="UnsafeOptInUsageError">
+        <option name="opt-in" value="androidx.media3.common.util.UnstableApi" />
+    </issue>
+</lint>
