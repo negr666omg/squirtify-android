@@ -48,4 +48,15 @@ class PlaybackSeekPolicyTest {
         assertFalse(shouldUseNativeSeek(false, false, true, true))
         assertTrue(shouldUseNativeSeek(false, true, true, false))
     }
+    @Test
+    fun `locally downloaded KHInsider track does not require URL resolution`() {
+        assertFalse(shouldResolveKhiTrack(hasDirectUrl = false, hasLocalFile = true))
+    }
+
+    @Test
+    fun `online KHInsider track resolves only when it has no direct URL`() {
+        assertTrue(shouldResolveKhiTrack(hasDirectUrl = false, hasLocalFile = false))
+        assertFalse(shouldResolveKhiTrack(hasDirectUrl = true, hasLocalFile = false))
+    }
+
 }
