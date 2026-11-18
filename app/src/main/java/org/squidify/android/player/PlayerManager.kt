@@ -910,7 +910,8 @@ class PlayerManager(
             return
         }
         val offsetSec = (absoluteMs / 1000L)
-        AppLog.i(TAG, "Seek via timeOffset=${offsetSec}s (transcoded stream has no Range support)")
+        val wasPlaying = p.playWhenReady
+        AppLog.i(TAG, "Seek via timeOffset=${offsetSec}s (transcoded stream has no Range support; wasPlaying=$wasPlaying)")
         timeOffsetBaseMs = offsetSec * 1000L
         val fresh = buildMediaItem(song, timeOffsetMs = timeOffsetBaseMs)
         // Mark the replacement BEFORE it happens: the PLAYLIST_CHANGED
@@ -919,7 +920,8 @@ class PlayerManager(
         selfReplacedMediaId = song.id
         p.replaceMediaItem(idx, fresh)
         p.prepare()
-        p.playWhenReady = true
+        // Seeking a paused song must not unexpectedly resume playback.
+        p.playWhenReady = wasPlaying
         _positionMs.value = absoluteMs
         // the seek bar ALWAYS shows the full track: the offset stream only
         // contains the tail, so its own duration must never overwrite the
@@ -927,7 +929,7 @@ class PlayerManager(
         // targets past the tail unreachable)
         if (song.durationMs > 0) _durationMs.value = song.durationMs
         _stalled.value = false
-        requestAudioFocus()
+        if (wasPlaying) requestAudioFocus()
     }
 
     /**
