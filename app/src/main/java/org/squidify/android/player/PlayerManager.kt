@@ -893,6 +893,30 @@ class PlayerManager(
         saveQueue()
     }
 
+    /**
+     * The service may have been recreated while PlayerManager kept its queue.
+     * Recreate the media timeline before accepting transport commands.
+     */
+    private fun ensureActiveTimeline(player: Player): Boolean {
+        val songs = _queue.value
+        if (songs.isEmpty()) return false
+        val index = _currentIndex.value.coerceIn(0, songs.lastIndex)
+        val expectedId = songs[index].id
+        if (player.mediaItemCount == songs.size &&
+            player.currentMediaItem?.mediaId == expectedId
+        ) return true
+
+        AppLog.w(
+            TAG,
+            "Player timeline lost or stale (items=${player.mediaItemCount}, current=${player.currentMediaItem?.mediaId}, expected=$expectedId); rebuilding",
+        )
+        player.setMediaItems(songs.map { buildMediaItem(it) }, index, _positionMs.value.coerceAtLeast(0L))
+        player.prepare()
+        player.playWhenReady = _isPlaying.value
+        _durationMs.value = songs[index].durationMs
+        return true
+    }
+
     fun togglePlayPause() {
         AppLog.d(TAG, "User: play/pause tapped (isPlaying=${_isPlaying.value})")
         if (cfState == CF_OVERLAP) {
@@ -910,6 +934,11 @@ class PlayerManager(
             return
         }
         val p = activeP ?: return
+        if (_playbackError.value != null || p.playerError != null) {
+            retryCurrent()
+            return
+        }
+        if (!ensureActiveTimeline(p)) return
         if (p.isPlaying) {
             p.pause()
         } else {
@@ -917,7 +946,6 @@ class PlayerManager(
             p.play()
             requestAudioFocus()
         }
-        // instant visual feedback: never wait for the player's event round-trip
         _isPlaying.value = positionSource()?.isPlaying == true
     }
 
@@ -925,16 +953,21 @@ class PlayerManager(
         AppLog.d(TAG, "User: next track tapped")
         cancelPendingSwitch()
         if (cfState == CF_OVERLAP) {
-            // the standby is the audible player mid-crossfade: adopt it, then skip
             finalizeCrossfadeInterrupted()
         } else {
             cancelCrossfade()
         }
         val p = activeP ?: return
+        val wasFailed = _playbackError.value != null || p.playerError != null
+        if (!ensureActiveTimeline(p)) return
+        val previousIndex = p.currentMediaItemIndex
         p.seekToNextMediaItem()
-        if (p.playbackState == Player.STATE_ENDED) {
+        val moved = p.currentMediaItemIndex != previousIndex
+        if (moved && (wasFailed || p.playbackState == Player.STATE_ENDED || p.playbackState == Player.STATE_IDLE)) {
+            _playbackError.value = null
             p.prepare()
-            p.play()
+            p.playWhenReady = true
+            requestAudioFocus()
         }
     }
 
@@ -947,10 +980,18 @@ class PlayerManager(
             cancelCrossfade()
         }
         val p = activeP ?: return
+        val wasFailed = _playbackError.value != null || p.playerError != null
+        if (!ensureActiveTimeline(p)) return
+        val previousIndex = p.currentMediaItemIndex
         p.seekToPreviousMediaItem()
-        if (p.playbackState == Player.STATE_ENDED) {
+        val moved = p.currentMediaItemIndex != previousIndex
+        if ((moved || p.currentPosition > 3_000L) &&
+            (wasFailed || p.playbackState == Player.STATE_ENDED || p.playbackState == Player.STATE_IDLE)
+        ) {
+            _playbackError.value = null
             p.prepare()
-            p.play()
+            p.playWhenReady = true
+            requestAudioFocus()
         }
     }
 
@@ -966,6 +1007,8 @@ class PlayerManager(
             activeP?.volume = 1f
         }
         val p = activeP ?: return
+        if (_playbackError.value != null || p.playerError != null) return
+        if (!ensureActiveTimeline(p)) return
         val song = currentSong
         val dur = song?.durationMs?.takeIf { it > 0 }
             ?: _durationMs.value.takeIf { it > 0 }
