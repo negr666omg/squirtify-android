@@ -376,6 +376,7 @@ class DownloadManager(
 
     // ---------------------------------------------------------------- controls
 
+    @Synchronized
     fun pause(id: String) {
         val job = _jobs.value.firstOrNull { it.id == id } ?: return
         if (job.status != DownloadStatus.QUEUED && job.status != DownloadStatus.RUNNING) return
@@ -387,6 +388,7 @@ class DownloadManager(
         update(id) { it.copy(status = DownloadStatus.PAUSED, error = null) }
     }
 
+    @Synchronized
     fun resume(id: String) {
         val job = _jobs.value.firstOrNull { it.id == id } ?: return
         if (job.status != DownloadStatus.PAUSED) return
