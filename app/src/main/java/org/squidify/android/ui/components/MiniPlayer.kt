@@ -64,12 +64,14 @@ fun MiniPlayer(
     val playIsr = remember { MutableInteractionSource() }
     val nextIsr = remember { MutableInteractionSource() }
     Surface(
+        shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shadowElevation = 8.dp,
+        tonalElevation = 2.dp,
+        shadowElevation = 4.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(24.dp))
             .clickable(onClick = onOpen),
     ) {
         Column {
@@ -80,20 +82,20 @@ fun MiniPlayer(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(2.dp),
+                    .height(3.dp),
                 color = MaterialTheme.colorScheme.primary,
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
             )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 CoverArt(
                     url = song.coverArtUrl(),
-                    modifier = Modifier.size(44.dp),
-                    corner = 8.dp,
+                    modifier = Modifier.size(48.dp),
+                    corner = 12.dp,
                     contentDescription = song.album,
                 )
                 Column(
@@ -103,7 +105,7 @@ fun MiniPlayer(
                 ) {
                     Text(
                         text = song.title,
-                        style = MaterialTheme.typography.titleSmall,
+                        style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
