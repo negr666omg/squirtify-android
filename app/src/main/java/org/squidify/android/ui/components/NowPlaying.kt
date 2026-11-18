@@ -242,7 +242,7 @@ fun NowPlayingScreen(
                             overflow = TextOverflow.Ellipsis,
                         )
                         TextButton(onClick = {
-                            if (idx in queue.indices) player.play(queue, idx)
+                            player.retryCurrent()
                         }) { Text("Retry") }
                         IconButton(onClick = { player.dismissPlaybackError() }) {
                             Icon(
