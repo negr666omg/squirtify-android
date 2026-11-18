@@ -12,3 +12,7 @@ internal fun shouldUseNativeSeek(
     durationTrustworthy: Boolean,
     isFullyCached: Boolean,
 ): Boolean = isSeekable && durationTrustworthy && (!isTranscoded || isFullyCached)
+
+/** A saved KHInsider track can play locally without resolving an online URL. */
+internal fun shouldResolveKhiTrack(hasDirectUrl: Boolean, hasLocalFile: Boolean): Boolean =
+    !hasDirectUrl && !hasLocalFile
