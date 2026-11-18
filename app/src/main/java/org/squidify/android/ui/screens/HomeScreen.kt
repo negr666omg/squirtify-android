@@ -20,9 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.background
@@ -58,35 +56,20 @@ fun HomeScreen(
     val subsonic = graph.subsonic
     val history by graph.history.entries.collectAsState()
 
-    var community by remember { mutableStateOf<List<Album>?>(null) }
-    var discover by remember { mutableStateOf<List<Album>?>(null) }
-    var frequent by remember { mutableStateOf<List<Album>?>(null) }
-    var newest by remember { mutableStateOf<List<Album>?>(null) }
-    var explore by remember { mutableStateOf<List<Album>?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var reloadKey by remember { mutableStateOf(0) }
+    val feed by HomeFeedCache.state.collectAsState()
 
-    LaunchedEffect(reloadKey) {
-        error = null
-        try {
-            val results = listOf(
-                subsonic.getAlbumList2("recent", size = 20),
-                subsonic.getAlbumList2("random", size = 20),
-                subsonic.getAlbumList2("frequent", size = 20),
-                subsonic.getAlbumList2("newest", size = 20),
-                subsonic.getAlbumList2("random", size = 20),
-            )
-            community = results[0]
-            discover = results[1]
-            frequent = results[2]
-            newest = results[3]
-            explore = results[4]
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            throw cancelled
-        } catch (e: Exception) {
-            error = e.message ?: "Connection failed"
-        }
+    // The request runs in the process-scoped graph scope, not the screen scope:
+    // switching to Settings won't cancel it or force the shelves to reload.
+    LaunchedEffect(subsonic) {
+        HomeFeedCache.ensureLoaded(graph.scope, subsonic)
     }
+
+    val community = feed.community
+    val discover = feed.discover
+    val frequent = feed.frequent
+    val newest = feed.newest
+    val explore = feed.explore
+    val error = feed.error
 
     // Recently played on THIS device: the local history grouped into albums.
     // (The account is guest, so the server's "recent" list reflects everyone.)
@@ -115,48 +98,22 @@ fun HomeScreen(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 140.dp),
     ) {
         item {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-            ) {
-                Column(Modifier.padding(horizontal = 22.dp, vertical = 20.dp)) {
-                    Text(
-                        text = "S Q U I R T I F Y",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = "Your music.",
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = "Pick up where the soundtrack left off.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+            Text(
+                text = "Home",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+            )
         }
 
         if (error != null) {
-            item { ErrorRetry("Couldn't reach the library.\n${error}") { reloadKey++ } }
+            item { ErrorRetry("Couldn't reach the library.\n${error}") { HomeFeedCache.reload(graph.scope, subsonic) } }
         } else {
             // ---------- this device
             if (localRecent.isNotEmpty()) {
                 item {
                     Column {
                         SectionHeader(title = "Recently played")
-                        Text(
-                            text = "What you listened to on this device",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                        )
                         Spacer(Modifier.height(4.dp))
                         RecentShelf(localRecent, onAlbumClick, onKhiAlbumClick)
                         Spacer(Modifier.height(8.dp))
@@ -168,12 +125,6 @@ fun HomeScreen(
             item {
                 Column {
                     SectionHeader(title = "Community")
-                    Text(
-                        text = "Recently played by everyone on the server",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                    )
                     Spacer(Modifier.height(4.dp))
                     ShelfSection(null, community, onAlbumClick)
                     Spacer(Modifier.height(8.dp))
