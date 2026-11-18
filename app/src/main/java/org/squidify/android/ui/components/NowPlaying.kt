@@ -106,6 +106,7 @@ fun NowPlayingScreen(
     val isPlaying by player.isPlaying.collectAsState()
     val stalled by player.stalled.collectAsState()
     val isBuffering by player.isBuffering.collectAsState()
+    val playbackError by player.playbackError.collectAsState()
     val shuffle by player.shuffle.collectAsState()
     val repeatMode by player.repeatMode.collectAsState()
 
@@ -218,6 +219,40 @@ fun NowPlayingScreen(
                 Spacer(Modifier.width(6.dp))
                 TabPill("Up Next", tab == 2) { tab = 2 }
                 Spacer(Modifier.weight(1f))
+            }
+
+            playbackError?.let { message ->
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        TextButton(onClick = {
+                            if (idx in queue.indices) player.play(queue, idx)
+                        }) { Text("Retry") }
+                        IconButton(onClick = { player.dismissPlaybackError() }) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Dismiss playback error",
+                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                        }
+                    }
+                }
             }
 
             when (tab) {
