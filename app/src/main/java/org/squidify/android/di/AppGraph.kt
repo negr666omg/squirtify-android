@@ -191,6 +191,7 @@ class AppGraph(context: Context) {
         settings.reload()
         favorites.reload()
         history.reload()
+        offlineLibrary.reload()
         downloads.reloadRegistry()
         AppLog.i(
             "Storage",
