@@ -19,7 +19,7 @@ enum class LyricsProvider { AUTO, SERVER, LRC_RED, LRCLIB, NETEASE, QQ, OVH }
 data class Settings(
     val streamingQuality: StreamQuality = StreamQuality.ORIGINAL,
     val themeMode: ThemeMode = ThemeMode.AUTO,
-    val dynamicColor: Boolean = false,
+    val dynamicColor: Boolean = true,
     val khiEnabled: Boolean = true,
     val khiQuality: KhiQuality = KhiQuality.BEST,
     /** Disk cache for streamed audio, MB (10..4096). Applied on player restart. */
