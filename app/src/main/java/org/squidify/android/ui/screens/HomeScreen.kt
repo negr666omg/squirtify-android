@@ -209,7 +209,7 @@ private fun RecentShelf(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        items(albums.size) { i ->
+        items(albums.size, key = { albums[it].key }) { i ->
             val a = albums[i]
             RecentAlbumCard(
                 title = a.title,
@@ -237,21 +237,23 @@ private fun RecentAlbumCard(
 ) {
     Column(
         modifier = Modifier
-            .width(166.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .width(150.dp)
+            .background(
+                MaterialTheme.colorScheme.surfaceContainerLow,
+                RoundedCornerShape(18.dp),
+            )
             .clickable(onClick = onClick)
-            .padding(9.dp),
+            .padding(8.dp),
     ) {
         CoverArt(
             url = coverUrl,
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f),
-            corner = 16.dp,
+            corner = 10.dp,
             contentDescription = title,
         )
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
         Text(
             text = title,
             style = MaterialTheme.typography.titleSmall,
@@ -280,7 +282,7 @@ private fun ShelfSection(title: String?, albums: List<Album>?, onAlbumClick: (Al
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                items(albums.size) { i ->
+                items(albums.size, key = { albums[it].id }) { i ->
                     org.squidify.android.ui.components.AlbumCard(
                         album = albums[i],
                         onClick = { onAlbumClick(albums[i]) },
