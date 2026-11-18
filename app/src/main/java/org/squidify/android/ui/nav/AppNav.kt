@@ -20,6 +20,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -205,9 +206,10 @@ fun AppNavHost(onExitApp: () -> Unit) {
                                     Icon(
                                         dest.icon,
                                         contentDescription = dest.label,
-                                        modifier = Modifier.size(26.dp),
+                                        modifier = Modifier.size(24.dp),
                                     )
                                 },
+                                label = { Text(dest.label) },
                             )
                         }
                     }
