@@ -21,6 +21,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,6 +54,10 @@ fun ArtistScreen(
 ) {
     val graph = App.graph()
     val scope = rememberCoroutineScope()
+    val player = graph.player
+    val queue by player.queue.collectAsState()
+    val currentIndex by player.currentIndex.collectAsState()
+    val isBuffering by player.isBuffering.collectAsState()
     var artist by remember { mutableStateOf<Artist?>(null) }
     var albums by remember { mutableStateOf<List<Album>?>(null) }
     var topSongs by remember { mutableStateOf<List<org.squidify.android.data.Song>?>(null) }
@@ -151,6 +156,7 @@ fun ArtistScreen(
                         item { SectionHeader("Top Songs") }
                         items(topSongs!!.size, key = { topSongs!![it].id }) { i ->
                             val song = topSongs!![i]
+                            val isCurrent = queue.getOrNull(currentIndex)?.id == song.id
                             SongRow(
                                 song = song,
                                 onClick = {
@@ -161,6 +167,8 @@ fun ArtistScreen(
                                     }
                                 },
                                 coverUrl = SongCover(song),
+                                isCurrent = isCurrent,
+                                isLoading = isCurrent && isBuffering,
                                 showAlbum = true,
                                 trailingText = Fmt.duration(song.duration?.toLong()),
                                 onMenuClick = { actions.show(song) },
