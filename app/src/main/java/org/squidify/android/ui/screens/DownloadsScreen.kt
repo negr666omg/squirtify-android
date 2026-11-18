@@ -61,7 +61,9 @@ fun DownloadsScreen() {
     val favSongs by graph.favorites.songs.collectAsState()
 
     val active = jobs.filter { it.status == DownloadStatus.RUNNING }
-    val pending = jobs.filter { it.status == DownloadStatus.QUEUED || it.status == DownloadStatus.PAUSED }
+    val queued = jobs.filter { it.status == DownloadStatus.QUEUED }
+    val paused = jobs.filter { it.status == DownloadStatus.PAUSED }
+    val pending = queued + paused
     val failed = jobs.filter { it.status == DownloadStatus.FAILED }
     val done = jobs.filter { it.status == DownloadStatus.DONE && it.kind == "audio" }
     val storage = graph.downloads.storageUsedBytes()
@@ -190,7 +192,9 @@ fun DownloadsScreen() {
         if (active.isNotEmpty() || pending.isNotEmpty()) {
             item {
                 SectionRow(
-                    "Downloading (${active.size})" + if (pending.isNotEmpty()) " · Queued (${pending.size})" else "",
+                    "Downloading (${active.size})" +
+                        if (queued.isNotEmpty()) " · Queued (${queued.size})" else "" +
+                        if (paused.isNotEmpty()) " · Paused (${paused.size})" else "",
                 )
             }
         }
