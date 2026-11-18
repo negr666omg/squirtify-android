@@ -96,7 +96,7 @@ object CrashHandler {
             }
         }
 
-        val full = header + logContext
+        val full = AppLog.redactSensitiveValues(header + logContext)
 
         // 1) the file the next launch reads and offers to copy
         File(logDir(ctx), LAST_CRASH).writeText(full)
@@ -107,8 +107,10 @@ object CrashHandler {
         val hist = File(logDir(ctx), HISTORY)
         val frames = throwable.stackTrace.take(2)
             .joinToString(" ← ") { "${it.className.substringAfterLast('.')}.${it.methodName}(${it.fileName}:${it.lineNumber})" }
-        val line = "$stamp  ${throwable.javaClass.simpleName}: ${throwable.message?.take(140) ?: "no message"}" +
-            if (frames.isNotBlank()) " @ $frames" else ""
+        val line = AppLog.redactSensitiveValues(
+            "$stamp  ${throwable.javaClass.simpleName}: ${throwable.message?.take(140) ?: "no message"}" +
+                if (frames.isNotBlank()) " @ $frames" else "",
+        )
         runCatching {
             val existing = if (hist.exists()) hist.readLines() else emptyList()
             (existing + line).takeLast(MAX_HISTORY).joinToString("\n", postfix = "\n")
