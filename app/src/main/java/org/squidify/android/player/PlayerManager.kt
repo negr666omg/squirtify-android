@@ -98,6 +98,14 @@ class PlayerManager(
     private val _stalled = MutableStateFlow(false)
     val stalled: StateFlow<Boolean> = _stalled.asStateFlow()
 
+    /** Sanitized user-facing playback failure; detailed diagnostics stay in AppLog. */
+    private val _playbackError = MutableStateFlow<String?>(null)
+    val playbackError: StateFlow<String?> = _playbackError.asStateFlow()
+
+    fun dismissPlaybackError() {
+        _playbackError.value = null
+    }
+
     private val _positionMs = MutableStateFlow(0L)
     val positionMs: StateFlow<Long> = _positionMs.asStateFlow()
 
@@ -443,6 +451,8 @@ class PlayerManager(
                     "Cause: ${error.cause?.javaClass?.simpleName}: ${error.cause?.message}",
                 error,
             )
+            // Keep raw Media3 details (which can contain signed URLs) out of UI.
+            _playbackError.value = "Can't play this track (${error.errorCodeName}). Tap Retry to try again."
             _isBuffering.value = false
             _stalled.value = false
         }
@@ -525,6 +535,7 @@ class PlayerManager(
                 _bufferProgress.value = _bufferProgress.value - song.id
             }
         }
+        _playbackError.value = null
         AppLog.i(TAG, "Track → ${currentSong?.title ?: "?"} (index ${p.currentMediaItemIndex})")
         currentSong?.let { history.record(it) }
         maybePrefetchNext()
@@ -539,6 +550,13 @@ class PlayerManager(
         playGeneration++
         healedSongs.clear()
         val gen = playGeneration
+        val previousQueue = _queue.value
+        val previousBaseQueue = baseQueue
+        val previousIndex = _currentIndex.value
+        val previousPosition = _positionMs.value
+        val previousDuration = _durationMs.value
+        val previousPlaying = _isPlaying.value
+        _playbackError.value = null
         _isBuffering.value = true
         _stalled.value = false
         // ---- OPTIMISTIC UI: the tapped track becomes "current" RIGHT NOW.
@@ -565,8 +583,25 @@ class PlayerManager(
                 if (songs.any { it.source == org.squidify.android.data.DownloadSource.KHINSIDER && it.khiDirectUrl == null }) {
                     prepared = try {
                         resolveKhiQueue(songs)
-                    } catch (_: Exception) {
-                        songs
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        AppLog.e(TAG, "Could not resolve KHInsider playback URLs", e)
+                        if (gen == playGeneration) {
+                            // Nothing has been sent to ExoPlayer yet. Restore
+                            // the previous audible queue instead of leaving a
+                            // fake optimistic selection on screen.
+                            _queue.value = previousQueue
+                            baseQueue = previousBaseQueue
+                            _currentIndex.value = previousIndex
+                            _positionMs.value = previousPosition
+                            _durationMs.value = previousDuration
+                            _isPlaying.value = previousPlaying
+                            _isBuffering.value = false
+                            _stalled.value = false
+                            _playbackError.value = "Couldn't load KHInsider audio. Check your connection and retry."
+                        }
+                        return@launch
                     }
                     if (gen != playGeneration) return@launch
                 }
@@ -601,6 +636,21 @@ class PlayerManager(
                 if (cfState != CF_NONE) cancelCrossfade()
                 val pNow = activeP ?: return@launch
                 applyQueue(pNow, ordered, start, 0L)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLog.e(TAG, "Could not start playback", e)
+                if (gen == playGeneration) {
+                    _queue.value = previousQueue
+                    baseQueue = previousBaseQueue
+                    _currentIndex.value = previousIndex
+                    _positionMs.value = previousPosition
+                    _durationMs.value = previousDuration
+                    _isPlaying.value = activeP?.isPlaying ?: previousPlaying
+                    _isBuffering.value = false
+                    _stalled.value = false
+                    _playbackError.value = "Playback couldn't start. Check the connection and retry."
+                }
             } finally {
                 if (gen == playGeneration && activeP?.playbackState != Player.STATE_BUFFERING) {
                     _isBuffering.value = false
@@ -1094,6 +1144,7 @@ class PlayerManager(
         _isPlaying.value = false
         _isBuffering.value = false
         _stalled.value = false
+        _playbackError.value = null
         abandonAudioFocus()
     }
 
@@ -1239,7 +1290,9 @@ class PlayerManager(
             KhiQuality.MP3 -> "mp3"
             KhiQuality.BEST -> if (res.flac != null) "flac" else "mp3"
         }
-        return song.copy(khiDirectUrl = res.urlFor(format))
+        val directUrl = res.urlFor(format)
+            ?: throw IllegalStateException("KHInsider resolver returned no playable $format URL")
+        return song.copy(khiDirectUrl = directUrl)
     }
 
     /** Resolve all KHI tracks before starting playback (parallel, bounded). */
