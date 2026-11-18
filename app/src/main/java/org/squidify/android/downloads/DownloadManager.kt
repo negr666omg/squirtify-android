@@ -222,6 +222,7 @@ class DownloadManager(
         persistNow()
     }
 
+    @Synchronized
     private fun update(id: String, transform: (DownloadJob) -> DownloadJob) {
         _jobs.value = _jobs.value.map { if (it.id == id) transform(it) else it }
         persist()
@@ -229,6 +230,7 @@ class DownloadManager(
 
     // ---------------------------------------------------------------- enqueues
 
+    @Synchronized
     fun enqueueSquidify(song: Song, quality: StreamQuality) {
         runCatching {
             enqueueSquidifyInner(song, quality)
@@ -269,6 +271,7 @@ class DownloadManager(
         kickService()
     }
 
+    @Synchronized
     fun enqueueSquidifyAll(songs: List<Song>, quality: StreamQuality) {
         runCatching {
             enqueueSquidifyAllInner(songs, quality)
@@ -318,6 +321,7 @@ class DownloadManager(
         kickService()
     }
 
+    @Synchronized
     fun enqueueKhi(
         albumName: String,
         trackTitle: String,
@@ -364,6 +368,7 @@ class DownloadManager(
     }
 
     /** Full KHInsider album download: save every cover image in original format. */
+    @Synchronized
     fun enqueueKhiAlbumArt(album: KhiAlbum) {
         if (album.albumImages.isEmpty()) return
         album.albumImages.forEach { imageUrl ->
@@ -452,6 +457,7 @@ class DownloadManager(
         persist()
     }
 
+    @Synchronized
     fun retry(id: String) {
         val job = _jobs.value.firstOrNull { it.id == id } ?: return
         AppLog.i(TAG, "Retrying: '${job.title}'")
@@ -463,16 +469,19 @@ class DownloadManager(
         kickService()
     }
 
+    @Synchronized
     fun clearCompleted() {
         _jobs.value = _jobs.value.filterNot { it.status == DownloadStatus.DONE }
         persist()
     }
 
+    @Synchronized
     fun clearFailed() {
         _jobs.value = _jobs.value.filterNot { it.status == DownloadStatus.FAILED }
         persist()
     }
 
+    @Synchronized
     fun deleteDownloaded(job: DownloadJob): Boolean {
         var ok = false
         val uri = job.contentUri
