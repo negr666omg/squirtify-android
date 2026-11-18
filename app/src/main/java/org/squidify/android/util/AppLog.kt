@@ -149,10 +149,15 @@ object AppLog {
             val parsed = lines.mapNotNull { raw -> parseLine(raw) }
                 .mapIndexed { i, e -> e.copy(id = (i + 1).toLong()) }
             synchronized(lock) {
-                if (parsed.isNotEmpty()) {
-                    counter = parsed.maxOf { it.id }
-                    _entries.value = parsed.takeLast(MAX_MEMORY)
-                }
+                // AppLog.init loads disk history asynchronously. Do not replace
+                // events already emitted in this process while that read was
+                // in flight; merge and re-key the combined list atomically.
+                val merged = (parsed + _entries.value)
+                    .sortedBy { it.timeMs }
+                    .takeLast(MAX_MEMORY)
+                    .mapIndexed { index, entry -> entry.copy(id = index + 1L) }
+                _entries.value = merged
+                counter = merged.lastOrNull()?.id ?: 0L
             }
         } catch (_: Exception) {
         }
