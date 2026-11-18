@@ -1,0 +1,1784 @@
+package org.squidify.android.player
+
+import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.CacheWriter
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.withContext
+import org.squidify.android.data.KhiQuality
+import org.squidify.android.data.ListenHistory
+import org.squidify.android.data.SettingsRepository
+import org.squidify.android.data.StreamQuality
+import org.squidify.android.data.SubsonicClient
+import org.squidify.android.downloads.DownloadManager
+import org.squidify.android.util.AppLog
+import java.util.Random
+import java.util.concurrent.ConcurrentHashMap
+
+/** Owns two ExoPlayer instances on behalf of [PlaybackService]:
+ * the active one plays the queue, the standby one is only used to create a
+ * TRUE crossfade (the next track starts playing while the current one fades
+ * out — real overlap, not consecutive fades). After each crossfade the two
+ * players swap roles; the MediaSession is re-bound to the new active player.
+ *
+ * The shuffle order is managed here (the player's own shuffle mode stays
+ * off), which keeps the queue, the notification and crossfade consistent.
+ *
+ * Transcoded Squidify streams (mp3/opus) arrive without HTTP Range support,
+ * so seeks are replayed through the server's timeOffset parameter; the
+ * absolute playback position is then [timeOffsetBaseMs] + player position.
+ */
+@UnstableApi
+class PlayerManager(
+    private val context: Context,
+    private val subsonic: SubsonicClient,
+    private val downloads: DownloadManager,
+    private val settings: SettingsRepository,
+    private val khi: org.squidify.android.data.KhiClient,
+    private val history: ListenHistory,
+) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    private var activeP: Player? = null
+    private var standbyP: Player? = null
+
+    /** Re-binds the MediaSession when the active player changes. */
+    private var sessionRebinder: ((Player) -> Unit)? = null
+    private var sessionBoundTo: Player? = null
+
+    /** A play() that arrived before the playback service finished attaching
+     *  its players (fast tap right after a cold start) — replayed on attach
+     *  instead of being silently dropped. */
+    private var pendingPlayRequest: Array<Any?>? = null
+
+    // ------------------------------------------------------------ state
+
+    private val _queue = MutableStateFlow<List<PlayerSong>>(emptyList())
+    val queue: StateFlow<List<PlayerSong>> = _queue.asStateFlow()
+
+    private val _currentIndex = MutableStateFlow(-1)
+    val currentIndex: StateFlow<Int> = _currentIndex.asStateFlow()
+
+    private val _isPlaying = MutableStateFlow(false)
+    val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
+
+    private val _isBuffering = MutableStateFlow(false)
+    val isBuffering: StateFlow<Boolean> = _isBuffering.asStateFlow()
+
+    /** Playback is stalled: the track audibly stopped because data ran out. */
+    private val _stalled = MutableStateFlow(false)
+    val stalled: StateFlow<Boolean> = _stalled.asStateFlow()
+
+    private val _positionMs = MutableStateFlow(0L)
+    val positionMs: StateFlow<Long> = _positionMs.asStateFlow()
+
+    private val _durationMs = MutableStateFlow(0L)
+    val durationMs: StateFlow<Long> = _durationMs.asStateFlow()
+
+    private val _shuffle = MutableStateFlow(false)
+    val shuffle: StateFlow<Boolean> = _shuffle.asStateFlow()
+
+    private val _repeatMode = MutableStateFlow(Player.REPEAT_MODE_OFF)
+    val repeatMode: StateFlow<Int> = _repeatMode.asStateFlow()
+
+    /** Whole-track download progress (0..1) keyed by song id; entries are removed when done. */
+    private val _bufferProgress = MutableStateFlow<Map<String, Float>>(emptyMap())
+    val bufferProgress: StateFlow<Map<String, Float>> = _bufferProgress.asStateFlow()
+
+    val currentSong: PlayerSong?
+        get() = _queue.value.getOrNull(_currentIndex.value)
+
+    /** The player whose position/track the UI should show. */
+    private fun positionSource(): Player? =
+        if (cfState == CF_OVERLAP) standbyP else activeP
+
+    // ------------------------------------------------------------ internals
+
+    /** Logical (unshuffled) queue order, remembered while shuffle is on. */
+    private var baseQueue: List<PlayerSong> = emptyList()
+    private val shuffleRng = Random()
+
+    private var ticker: Job? = null
+    private var scrobbledCurrent = false
+    private var saveJob: Job? = null
+    private var pendingSwitch: Job? = null
+    private var playGeneration = 0L
+    private var nextPrefetched = false
+    /** Songs whose cache was already evicted+reloaded this session — the
+     *  corrupt-cache self-heal must never loop. */
+    private val healedSongs = HashSet<String>()
+
+    /** Absolute-position base when the current transcoded stream was opened
+     *  with a server-side timeOffset (player positions are window-relative). */
+    private var timeOffsetBaseMs = 0L
+
+    /** A seek tapped before the current track is actually READY on the player.
+     *  The UI turns optimistic the instant a track is tapped, but the playlist
+     *  swap (KHInsider resolve, full-buffer prefetch, plain main-dispatch
+     *  latency) lands a moment later — a seek in that window must NOT touch
+     *  the playlist. Parked here and replayed the moment the track becomes
+     *  playable. */
+    private var pendingSeekMs: Long? = null
+    private var pendingSeekSongId: String? = null
+
+    /** mediaId of an item this manager just replaced in place (offset seek,
+     *  cache heal, quality swap). The PLAYLIST_CHANGED transition that
+     *  replaceMediaItem posts afterwards is OURS — running onTrackChanged on
+     *  it used to zero timeOffsetBaseMs right after an offset seek, throwing
+     *  the seek bar back to the start while the audio kept playing from the
+     *  offset. */
+    private var selfReplacedMediaId: String? = null
+
+    /** Crossfade state: none / overlapping / fading the tail of the last track. */
+    private var cfState = CF_NONE
+    private var cfIncomingIdx = -1
+    private var cfOutgoingIdx = -1
+    private var cfOutgoingBaseMs = 0L
+    private var crossfadeRampJob: Job? = null
+
+    /** True between loading the standby's playlist and its first transition
+     *  callback — that initial transition is ours, not a user skip. */
+    private var cfStandbyArmed = false
+
+    // ------------------------------------------------------------ audio focus
+
+    private var focusRequest: AudioFocusRequest? = null
+    private var resumeOnFocusGain = false
+
+    private fun requestAudioFocus() {
+        if (focusRequest != null) return
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        val attrs = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            .build()
+        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(attrs)
+            .setOnAudioFocusChangeListener(::onAudioFocusChange, Handler(Looper.getMainLooper()))
+            .setWillPauseWhenDucked(false)
+            .build()
+        val res = am.requestAudioFocus(request)
+        if (res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+            focusRequest = request
+        }
+    }
+
+    private fun abandonAudioFocus() {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        focusRequest?.let { runCatching { am.abandonAudioFocusRequest(it) } }
+        focusRequest = null
+        resumeOnFocusGain = false
+    }
+
+    private fun onAudioFocusChange(change: Int) {
+        val focusName = when (change) {
+            AudioManager.AUDIOFOCUS_GAIN -> "GAIN"
+            AudioManager.AUDIOFOCUS_LOSS -> "LOSS"
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> "LOSS_TRANSIENT"
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> "LOSS_TRANSIENT_CAN_DUCK"
+            else -> "?$change"
+        }
+        AppLog.i(TAG, "Audio focus event: $focusName (was playing=${positionSource()?.isPlaying == true})")
+        when (change) {
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                resumeOnFocusGain = false
+                pauseAll()
+                // permanent loss: hand the request back so a later play —
+                // from the shade, headset or Bluetooth — re-requests focus
+                // instead of playing on a stale grant
+                abandonAudioFocus()
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                resumeOnFocusGain = positionSource()?.isPlaying == true
+                pauseAll()
+            }
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                if (resumeOnFocusGain) {
+                    resumeOnFocusGain = false
+                    positionSource()?.play()
+                    refreshTicker()
+                    AppLog.d(TAG, "Resuming after transient focus loss")
+                }
+            }
+        }
+    }
+
+    private fun pauseAll() {
+        activeP?.pause()
+        standbyP?.pause()
+        refreshTicker()
+    }
+
+    // ------------------------------------------------------------ attach
+
+    fun attach(active: Player, standby: Player, rebind: (Player) -> Unit) {
+        if (activeP === active) return
+        activeP = active
+        standbyP = standby
+        sessionRebinder = rebind
+        sessionBoundTo = active
+        active.addListener(activeListener)
+        standby.addListener(standbyListener)
+        _repeatMode.value = active.repeatMode
+        AppLog.i(TAG, "Two players attached (active + crossfade standby); restoring last queue…")
+        scope.launch {
+            val pending = pendingPlayRequest
+            if (pending == null) {
+                tryRestoreQueue()
+            } else {
+                // the user already chose something while the service was still
+                // starting — their pick wins over the server-saved queue
+                AppLog.i(TAG, "Replaying the play request made before the player was ready")
+                pendingPlayRequest = null
+                @Suppress("UNCHECKED_CAST")
+                play(
+                    pending[0] as List<PlayerSong>,
+                    pending[1] as Int,
+                    pending[2] as Boolean,
+                )
+            }
+        }
+    }
+
+    private val activeListener = object : Player.Listener {
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            val p = activeP ?: return
+            // Consume the "we replaced this item ourselves" marker FIRST: the
+            // transition that replaceMediaItem posts for the current item must
+            // not run the onTrackChanged resets (see selfReplacedMediaId).
+            if (selfReplacedMediaId != null) {
+                val expected = selfReplacedMediaId
+                selfReplacedMediaId = null
+                if (mediaItem?.mediaId == expected) {
+                    AppLog.d(
+                        TAG,
+                        "Self-inflicted replacement of '${mediaItem?.mediaMetadata?.title ?: "?"}' — skipping onTrackChanged resets",
+                    )
+                    return
+                }
+                // different item: a genuine transition — fall through normally
+            }
+            AppLog.d(
+                TAG,
+                "onMediaItemTransition → '${mediaItem?.mediaMetadata?.title ?: "?"}' reason=${transitionReasonName(reason)}",
+            )
+            // A crossfade overlap ends here — regardless of why the outgoing
+            // item transitioned (natural end OR a repeat-one loop seam), the
+            // standby player must be adopted as the new active one.
+            if (cfState == CF_OVERLAP) {
+                finalizeCrossfade()
+                return
+            }
+            // a repeat-one loop must stay perfectly seamless: no UI churn, no fades
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) {
+                AppLog.d(TAG, "Repeat-one loop: seamless restart of the same track")
+                return
+            }
+            onTrackChanged(p)
+        }
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            AppLog.i(
+                TAG,
+                "isPlaying=$isPlaying (state=${stateName(activeP?.playbackState)}, playWhenReady=${activeP?.playWhenReady})" +
+                    " — '${currentSong?.title ?: "?"}'",
+            )
+            if (cfState == CF_OVERLAP) {
+                _isPlaying.value = standbyP?.isPlaying ?: false
+            } else {
+                // Authoritative read from the AUDIBLE player, not from the
+                // callback parameter: after a crossfade swap this listener may
+                // sit on the old (now silent) player, and its events must
+                // never overwrite the state of the player the user hears.
+                // This is what kept the play/pause button showing a dead
+                // triangle after track transitions.
+                val src = positionSource()
+                _isPlaying.value = src?.isPlaying == true
+                _stalled.value =
+                    src?.let { !it.isPlaying && it.playbackState == Player.STATE_BUFFERING } ?: false
+            }
+            refreshTicker()
+        }
+
+        override fun onPlaybackStateChanged(state: Int) {
+            AppLog.i(
+                TAG,
+                "Playback state → ${stateName(state)} (isPlaying=${activeP?.isPlaying}, playWhenReady=${activeP?.playWhenReady})" +
+                    " — '${currentSong?.title ?: "?"}'",
+            )
+            if (cfState == CF_OVERLAP) {
+                _isBuffering.value = standbyP?.playbackState == Player.STATE_BUFFERING
+                return
+            }
+            // authoritative state of the audible player (see onIsPlayingChanged)
+            val src = positionSource()
+            val srcState = src?.playbackState ?: state
+            _isBuffering.value = srcState == Player.STATE_BUFFERING
+            _stalled.value =
+                srcState == Player.STATE_BUFFERING && src?.isPlaying != true && src?.playWhenReady == true
+            if (srcState == Player.STATE_READY) {
+                val metaDur = currentSong?.durationMs ?: 0L
+                val streamDur = src?.duration?.takeIf { it > 0 } ?: 0L
+                // Only accept the stream's duration when it is CONSISTENT with
+                // the track metadata. An offset stream (seek via timeOffset)
+                // naturally reports only the TAIL length — adopting it would
+                // shrink the seek bar to the tail; a corrupt cache entry
+                // reports a tiny length — adopting it would trigger an
+                // instant "crossfade to the next track" on a healthy song.
+                val expectedTail = if (timeOffsetBaseMs > 0) metaDur - timeOffsetBaseMs else metaDur
+                val consistent = streamDur <= 0 || metaDur <= 0 ||
+                    kotlin.math.abs(streamDur - expectedTail) < 10_000L
+                if (consistent) {
+                    _durationMs.value = streamDur.takeIf { it > 0 } ?: _durationMs.value
+                } else {
+                    _durationMs.value = metaDur.takeIf { it > 0 } ?: _durationMs.value
+                }
+                // Self-heal: the cached stream is dramatically shorter than
+                // the real track (truncated/corrupt cache entry). Evict the
+                // song's cache entries and reload a fresh stream — otherwise
+                // the player would treat the song as "almost over" and
+                // crossfade away within seconds of starting it.
+                if (streamDur > 0 && metaDur > 20_000L && streamDur < metaDur * 0.5f &&
+                    timeOffsetBaseMs == 0L && currentSong?.source == org.squidify.android.data.DownloadSource.SQUIDIFY &&
+                    downloads.downloadedUriFor(currentSong?.id ?: "") == null
+                ) {
+                    healCorruptCache(currentSong!!, streamDur, metaDur)
+                }
+                // the track is really playable now — replay a seek that was
+                // parked while it was still loading
+                applyPendingSeekIfAny()
+            }
+            if (srcState == Player.STATE_ENDED) {
+                // the tail was faded out (repeat off, last track) — restore volume
+                // so pressing play again isn't silent
+                src?.volume = 1f
+                if (cfState == CF_FADEOUT_ONLY) {
+                    cfState = CF_NONE
+                    crossfadeRampJob?.cancel()
+                    crossfadeRampJob = null
+                }
+            }
+        }
+
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            AppLog.i(TAG, "playWhenReady=$playWhenReady reason=${playWhenReadyReasonName(reason)} — '${currentSong?.title ?: "?"}'")
+            // reactive audio focus: the play may come from the system shade
+            // media controls, a headset button, Bluetooth or an assistant —
+            // none of which go through the in-app play/toggle paths that
+            // request focus themselves. Holding focus keeps ducking and
+            // pause-on-call behaviour correct for those entry points too.
+            if (playWhenReady && focusRequest == null) {
+                requestAudioFocus()
+            }
+            // recompute the UI state from the audible player so the button
+            // reacts even when no separate isPlaying event follows
+            if (cfState != CF_OVERLAP) {
+                _isPlaying.value = positionSource()?.isPlaying == true
+            }
+        }
+
+        override fun onPlaybackSuppressionReasonChanged(suppressionReason: Int) {
+            AppLog.i(TAG, "Playback suppression → $suppressionReason (0=none, 1=transient loss)")
+        }
+
+        override fun onPositionDiscontinuity(
+            oldPosition: Player.PositionInfo,
+            newPosition: Player.PositionInfo,
+            reason: Int,
+        ) {
+            AppLog.d(
+                TAG,
+                "Position discontinuity: ${oldPosition.positionMs}ms → ${newPosition.positionMs}ms " +
+                    "(item ${oldPosition.mediaItemIndex}→${newPosition.mediaItemIndex}, reason=${discontinuityReasonName(reason)})",
+            )
+        }
+
+        override fun onRepeatModeChanged(repeatMode: Int) {
+            AppLog.i(TAG, "Repeat mode → ${repeatModeName(repeatMode)}")
+            // keep the app-level state in sync — the player's repeat mode can
+            // also be changed externally (media session command from the
+            // shade, Bluetooth, assistant), and the crossfade loop decision
+            // reads this state
+            _repeatMode.value = repeatMode
+        }
+
+        override fun onPlayerError(error: PlaybackException) {
+            if (cfState == CF_OVERLAP) {
+                // the outgoing track broke at its tail — treat as finished
+                finalizeCrossfade()
+                return
+            }
+            val song = currentSong
+            AppLog.e(
+                TAG,
+                "Playback error on '${song?.title ?: "?"}' [${song?.id ?: "-"}]: " +
+                    "${error.errorCodeName} — ${error.message}. " +
+                    "Cause: ${error.cause?.javaClass?.simpleName}: ${error.cause?.message}",
+                error,
+            )
+            _isBuffering.value = false
+            _stalled.value = false
+        }
+    }
+
+    private val standbyListener = object : Player.Listener {
+        // The standby only makes noise during a crossfade overlap; anything the
+        // user does to it from the media notification mid-overlap is handled here.
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            if (cfState != CF_OVERLAP) return
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) return
+            if (cfStandbyArmed) {
+                // the transition caused by our own setMediaItems() — the crossfade
+                // overlap itself, not a user action
+                cfStandbyArmed = false
+                return
+            }
+            // user skipped forward from the notification during the overlap
+            finalizeCrossfadeInterrupted()
+        }
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (cfState != CF_OVERLAP) return
+            AppLog.d(TAG, "Crossfade player isPlaying=$isPlaying")
+            _isPlaying.value = isPlaying
+            val st = standbyP ?: return
+            if (!isPlaying && !st.playWhenReady) {
+                // paused from the notification while the old track still overlaps
+                finalizeCrossfadeInterrupted()
+            }
+            refreshTicker()
+        }
+
+        override fun onPlaybackStateChanged(state: Int) {
+            if (cfState != CF_OVERLAP) return
+            AppLog.d(TAG, "Crossfade player state → ${stateName(state)}")
+            _isBuffering.value = state == Player.STATE_BUFFERING
+            _stalled.value = state == Player.STATE_BUFFERING && standbyP?.isPlaying != true
+            if (state == Player.STATE_READY) applyPendingSeekIfAny()
+        }
+
+        override fun onPlayerError(error: PlaybackException) {
+            if (cfState != CF_OVERLAP) return
+            AppLog.w(TAG, "Crossfade player error: ${error.errorCodeName} — ${error.message}; cancelling crossfade")
+            cancelCrossfade()
+        }
+    }
+
+    /** Shared "a different track is now current" bookkeeping. */
+    private fun onTrackChanged(p: Player) {
+        scrobbledCurrent = false
+        nextPrefetched = false
+        timeOffsetBaseMs = 0L
+        // Index resolution: the player's playlist index is USUALLY aligned
+        // with the queue, but crossfade swaps and in-place item replacements
+        // can desync them for an event or two — the title must always follow
+        // the item that is ACTUALLY playing, so trust the media id first and
+        // fall back to the playlist index. (Fixes "title shows the next track
+        // while the previous one is still playing".)
+        val playlistIdx = p.currentMediaItemIndex
+        val mediaId = p.currentMediaItem?.mediaId
+        val queueIdx = if (playlistIdx in _queue.value.indices && _queue.value[playlistIdx].id == mediaId) {
+            playlistIdx
+        } else {
+            _queue.value.indexOfFirst { it.id == mediaId }.takeIf { it >= 0 }
+                // never let a stale player index bleed out of the queue bounds
+                ?: playlistIdx.takeIf { it in _queue.value.indices }
+                ?: _currentIndex.value.takeIf { it in _queue.value.indices }
+                ?: 0
+        }
+        _currentIndex.value = queueIdx
+        _positionMs.value = 0L
+        _durationMs.value = p.duration.takeIf { it > 0 } ?: currentSong?.durationMs ?: 0L
+        // the track that just became current is obviously playable — clear any
+        // stale full-buffer progress entry left over for it
+        currentSong?.let { song ->
+            if (_bufferProgress.value.containsKey(song.id)) {
+                _bufferProgress.value = _bufferProgress.value - song.id
+            }
+        }
+        AppLog.i(TAG, "Track → ${currentSong?.title ?: "?"} (index ${p.currentMediaItemIndex})")
+        currentSong?.let { history.record(it) }
+        maybePrefetchNext()
+    }
+
+    // ------------------------------------------------------------ playback
+
+    fun play(songs: List<PlayerSong>, startIndex: Int = 0, shuffled: Boolean = false) {
+        if (songs.isEmpty()) return
+        cancelPendingSwitch()
+        cancelCrossfade()
+        playGeneration++
+        healedSongs.clear()
+        val gen = playGeneration
+        _isBuffering.value = true
+        _stalled.value = false
+        // ---- OPTIMISTIC UI: the tapped track becomes "current" RIGHT NOW.
+        // Even while KHInsider URLs are still resolving or a full-buffer
+        // prefetch is running, every open screen highlights the row — the tap
+        // is visibly registered the moment it happens.
+        _queue.value = songs
+        baseQueue = songs
+        val optimisticIdx = startIndex.coerceIn(0, songs.lastIndex)
+        _currentIndex.value = optimisticIdx
+        _positionMs.value = 0L
+        _durationMs.value = songs[optimisticIdx].durationMs
+        if (activeP == null) {
+            // the playback service hasn't attached its players yet (very fast
+            // tap after launch) — remember the request and replay it on attach
+            AppLog.i(TAG, "Player not ready yet — deferring play of '${songs[optimisticIdx].title}'")
+            pendingPlayRequest = arrayOf(songs, optimisticIdx, shuffled)
+            return
+        }
+        scope.launch {
+            try {
+                var prepared = songs
+                // resolve any unresolved KHInsider tracks (e.g. replay from history)
+                if (songs.any { it.source == org.squidify.android.data.DownloadSource.KHINSIDER && it.khiDirectUrl == null }) {
+                    prepared = try {
+                        resolveKhiQueue(songs)
+                    } catch (_: Exception) {
+                        songs
+                    }
+                    if (gen != playGeneration) return@launch
+                }
+
+                val ordered: List<PlayerSong>
+                val start: Int
+                if (shuffled && prepared.size > 1) {
+                    baseQueue = prepared
+                    _shuffle.value = true
+                    val idx = startIndex.coerceIn(0, prepared.lastIndex)
+                    ordered = listOf(prepared[idx]) +
+                        prepared.filterIndexed { i, _ -> i != idx }.shuffled(shuffleRng)
+                    start = 0
+                } else {
+                    if (!shuffled) {
+                        baseQueue = prepared
+                        _shuffle.value = false
+                    }
+                    ordered = prepared
+                    start = startIndex.coerceIn(0, prepared.lastIndex)
+                }
+
+                val target = ordered.getOrNull(start) ?: return@launch
+                // "download whole track first" mode: fetch it fully before switching
+                if (settings.state().value.fullBuffer && playbackUri(target) != null && !isFullyCached(target)) {
+                    prefetchWholeTrack(target)
+                    if (gen != playGeneration) return@launch
+                }
+                // The prefetch may have taken minutes — a crossfade could have
+                // swapped the two players meanwhile, so ALWAYS re-resolve the
+                // current active player instead of a stale captured reference.
+                if (cfState != CF_NONE) cancelCrossfade()
+                val pNow = activeP ?: return@launch
+                applyQueue(pNow, ordered, start, 0L)
+            } finally {
+                if (gen == playGeneration && activeP?.playbackState != Player.STATE_BUFFERING) {
+                    _isBuffering.value = false
+                }
+            }
+        }.also { pendingSwitch = it }
+    }
+
+    /** Starts the given list in shuffled order from a random track. */
+    fun playShuffled(songs: List<PlayerSong>) {
+        if (songs.isEmpty()) return
+        play(songs, (songs.indices).random(), shuffled = true)
+    }
+
+    private fun applyQueue(p: Player, songs: List<PlayerSong>, idx: Int, posMs: Long) {
+        if (!_shuffle.value) baseQueue = songs
+        _queue.value = songs
+        timeOffsetBaseMs = 0L
+        p.setMediaItems(songs.map { buildMediaItem(it) }, idx, posMs)
+        p.prepare()
+        p.playWhenReady = true
+        _currentIndex.value = idx
+        _positionMs.value = posMs
+        _durationMs.value = songs.getOrNull(idx)?.durationMs ?: 0L
+        _stalled.value = false
+        scrobbledCurrent = false
+        nextPrefetched = false
+        saveQueue()
+        requestAudioFocus()
+    }
+
+    fun addToQueue(songs: List<PlayerSong>) {
+        val p = activeP ?: return
+        if (songs.isEmpty()) return
+        if (_queue.value.isEmpty()) {
+            play(songs, 0)
+            return
+        }
+        _queue.value = _queue.value + songs
+        p.addMediaItems(songs.map { buildMediaItem(it) })
+        if (cfState == CF_OVERLAP) {
+            // the standby is playing the tail of the same queue; keep it in sync
+            standbyP?.addMediaItems(songs.map { buildMediaItem(it) })
+        }
+    }
+
+    fun playNext(songs: List<PlayerSong>) {
+        val p = activeP ?: return
+        if (songs.isEmpty()) return
+        if (_queue.value.isEmpty()) {
+            play(songs, 0)
+            return
+        }
+        val at = (_currentIndex.value + 1).coerceAtMost(_queue.value.size)
+        _queue.value = _queue.value.toMutableList().apply { addAll(at, songs) }
+        p.addMediaItems(at, songs.map { buildMediaItem(it) })
+        if (cfState == CF_OVERLAP) {
+            val standbyAt = (at - cfIncomingIdx).coerceIn(0, standbyP?.mediaItemCount ?: 0)
+            standbyP?.addMediaItems(standbyAt, songs.map { buildMediaItem(it) })
+        }
+    }
+
+    fun jumpTo(index: Int) {
+        if (index !in _queue.value.indices) return
+        cancelPendingSwitch()
+        cancelCrossfade()
+        playGeneration++
+        healedSongs.clear()
+        val gen = playGeneration
+        val song = _queue.value[index]
+        AppLog.i(TAG, "User tapped track #$index '${song.title}' in the queue")
+        _isBuffering.value = true
+        _stalled.value = false
+        // optimistic: the tapped queue row highlights immediately
+        _currentIndex.value = index
+        _positionMs.value = 0L
+        _durationMs.value = song.durationMs
+        scope.launch {
+            try {
+                if (settings.state().value.fullBuffer && playbackUri(song) != null && !isFullyCached(song)) {
+                    prefetchWholeTrack(song)
+                    if (gen != playGeneration) return@launch
+                }
+                // re-resolve: players may have swapped during the download
+                if (cfState != CF_NONE) cancelCrossfade()
+                val p = activeP ?: return@launch
+                timeOffsetBaseMs = 0L
+                p.seekTo(index, 0L)
+                p.prepare()
+                p.playWhenReady = true
+                _currentIndex.value = index
+                _positionMs.value = 0L
+                scrobbledCurrent = false
+                nextPrefetched = false
+                requestAudioFocus()
+            } finally {
+                if (gen == playGeneration && activeP?.playbackState != Player.STATE_BUFFERING) {
+                    _isBuffering.value = false
+                }
+            }
+        }.also { pendingSwitch = it }
+    }
+
+    fun removeAt(index: Int) {
+        val p = activeP ?: return
+        if (index !in _queue.value.indices) return
+        if (cfState != CF_NONE) cancelCrossfade()
+        val cur = p.currentMediaItemIndex
+        _queue.value = _queue.value.filterIndexed { i, _ -> i != index }
+        if (!_shuffle.value) baseQueue = _queue.value
+        p.removeMediaItem(index)
+        if (index == cur) {
+            _currentIndex.value = p.currentMediaItemIndex
+        }
+        saveQueue()
+    }
+
+    fun move(from: Int, to: Int) {
+        val p = activeP ?: return
+        val q = _queue.value.toMutableList()
+        if (from !in q.indices || to !in q.indices) return
+        if (cfState != CF_NONE) cancelCrossfade()
+        val item = q.removeAt(from)
+        q.add(to, item)
+        _queue.value = q
+        if (!_shuffle.value) baseQueue = q
+        p.moveMediaItem(from, to)
+        _currentIndex.value = p.currentMediaItemIndex
+        saveQueue()
+    }
+
+    fun togglePlayPause() {
+        AppLog.d(TAG, "User: play/pause tapped (isPlaying=${_isPlaying.value})")
+        if (cfState == CF_OVERLAP) {
+            val incoming = standbyP ?: return
+            if (incoming.isPlaying) {
+                activeP?.pause()
+                incoming.pause()
+                finalizeCrossfadeInterrupted()
+            } else {
+                incoming.prepare()
+                incoming.play()
+                requestAudioFocus()
+                _isPlaying.value = true
+            }
+            return
+        }
+        val p = activeP ?: return
+        if (p.isPlaying) {
+            p.pause()
+        } else {
+            p.prepare()
+            p.play()
+            requestAudioFocus()
+        }
+        // instant visual feedback: never wait for the player's event round-trip
+        _isPlaying.value = positionSource()?.isPlaying == true
+    }
+
+    fun next() {
+        AppLog.d(TAG, "User: next track tapped")
+        cancelPendingSwitch()
+        if (cfState == CF_OVERLAP) {
+            // the standby is the audible player mid-crossfade: adopt it, then skip
+            finalizeCrossfadeInterrupted()
+        } else {
+            cancelCrossfade()
+        }
+        val p = activeP ?: return
+        p.seekToNextMediaItem()
+        if (p.playbackState == Player.STATE_ENDED) {
+            p.prepare()
+            p.play()
+        }
+    }
+
+    fun previous() {
+        AppLog.d(TAG, "User: previous track tapped")
+        cancelPendingSwitch()
+        if (cfState == CF_OVERLAP) {
+            finalizeCrossfadeInterrupted()
+        } else {
+            cancelCrossfade()
+        }
+        val p = activeP ?: return
+        p.seekToPreviousMediaItem()
+        if (p.playbackState == Player.STATE_ENDED) {
+            p.prepare()
+            p.play()
+        }
+    }
+
+    fun seekTo(ms: Long) {
+        val p = positionSource() ?: return
+        val song = currentSong
+        val dur = _durationMs.value.takeIf { it > 0 } ?: p.duration.takeIf { it > 0 } ?: 0L
+        val pos = if (dur > 0) ms.coerceIn(0L, dur) else ms.coerceAtLeast(0)
+
+        // ---- FAST-TAP GUARD -------------------------------------------------
+        // The UI is optimistic from the instant a track is tapped, but the
+        // player may still hold the PREVIOUS playlist (KHInsider URLs are
+        // resolving, a full-buffer prefetch is running, or the swap simply
+        // hasn't been dispatched yet) or be mid-prepare on the new one.
+        // Mutating the playlist in that window raced the pending
+        // setMediaItems()/prepare(): the UI jumped back to the album's first
+        // track, audio stalled, and the MediaSession occasionally crashed
+        // building its PlayerInfo snapshot (IllegalStateException:
+        // mediaItemIndex >= timeline windowCount). Park the seek instead and
+        // replay it the moment the intended track is actually READY.
+        if (
+            song == null || p.mediaItemCount == 0 ||
+            p.currentMediaItem?.mediaId != song.id ||
+            p.playbackState != Player.STATE_READY
+        ) {
+            if (song == null) return
+            pendingSeekMs = pos
+            pendingSeekSongId = song.id
+            AppLog.i(
+                TAG,
+                "Seek parked at ${pos}ms — '${song.title}' is not READY yet " +
+                    "(state=${stateName(p.playbackState)}, hasItem=${p.currentMediaItem?.mediaId ?: "-"}, want=${song.id})",
+            )
+            // the bar follows the finger immediately; audio follows on READY
+            _positionMs.value = pos
+            return
+        }
+
+        if (cfState == CF_FADEOUT_ONLY) {
+            // a seek invalidates the tail fade; snap back to full volume
+            crossfadeRampJob?.cancel()
+            crossfadeRampJob = null
+            cfState = CF_NONE
+            p.volume = 1f
+        }
+        val transcodedStream = song.source == org.squidify.android.data.DownloadSource.SQUIDIFY &&
+            settings.state().value.streamingQuality != StreamQuality.ORIGINAL &&
+            downloads.downloadedUriFor(song.id) == null
+        // Native seeks are only safe when the stream REALLY covers the whole
+        // (absolute) track: a seekable-but-offset stream only contains the
+        // tail, and its player duration is the TAIL length, not the track's —
+        // seeking natively into it lands at wrong positions (the opus/mp3
+        // "can't seek" bug: the bar snapped back or jumped wild).
+        val metaDur = song.durationMs
+        val nativeDur = p.duration.takeIf { it > 0 } ?: 0L
+        val durationTrustworthy = nativeDur <= 0 || metaDur <= 0 ||
+            kotlin.math.abs(timeOffsetBaseMs + nativeDur - metaDur) < 10_000L
+        val seekable = p.isCurrentMediaItemSeekable
+        AppLog.i(
+            TAG,
+            "Seek → ${pos}ms (native-seekable=$seekable, durationOk=$durationTrustworthy, timeOffsetBase=$timeOffsetBaseMs) — '${song.title}'",
+        )
+        if (seekable && durationTrustworthy && pos >= timeOffsetBaseMs) {
+            // native seek (range-supporting streams, local files, fully cached)
+            p.seekTo((pos - timeOffsetBaseMs).coerceAtLeast(0))
+            _positionMs.value = pos
+        } else if (transcodedStream) {
+            // transcoded streams are not range-seekable — restart them at a
+            // server-side time offset instead
+            seekViaTimeOffset(song, pos)
+        } else {
+            // local/KHI files should always be seekable; last-resort fallback
+            p.seekTo(pos)
+            _positionMs.value = pos
+        }
+    }
+
+    /** Replays a parked seek once its track is finally READY; a parked seek
+     *  for a track the user has already navigated away from is dropped. */
+    private fun applyPendingSeekIfAny() {
+        val parkedMs = pendingSeekMs ?: return
+        val parkedSongId = pendingSeekSongId ?: return
+        val song = currentSong ?: return
+        if (song.id != parkedSongId) {
+            AppLog.d(TAG, "Dropping parked seek for '$parkedSongId' — now on '${song.title}'")
+            pendingSeekMs = null
+            pendingSeekSongId = null
+            return
+        }
+        val p = positionSource() ?: return
+        if (p.currentMediaItem?.mediaId != parkedSongId) return // not on this track yet
+        pendingSeekMs = null
+        pendingSeekSongId = null
+        AppLog.i(TAG, "Applying parked seek to ${parkedMs}ms — '${song.title}' is READY now")
+        seekTo(parkedMs)
+    }
+
+    /**
+     * Seek on a non-range transcoded stream: rebuild the current MediaItem
+     * with ?timeOffset=seconds and keep playing from there. Position math is
+     * corrected with [timeOffsetBaseMs] so the UI still shows absolute time.
+     */
+    private fun seekViaTimeOffset(song: PlayerSong, absoluteMs: Long) {
+        val p = activeP ?: return
+        if (cfState != CF_NONE) cancelCrossfade()
+        val idx = p.currentMediaItemIndex
+        // The surgery below is only safe on a prepared, matching playlist —
+        // seekTo() guarantees it, but double-check so any future caller can't
+        // reintroduce the mid-transition races.
+        if (idx < 0 || idx >= p.mediaItemCount || p.currentMediaItem?.mediaId != song.id) {
+            AppLog.w(TAG, "seekViaTimeOffset skipped — player not on '${song.title}' (idx=$idx of ${p.mediaItemCount})")
+            pendingSeekMs = absoluteMs
+            pendingSeekSongId = song.id
+            return
+        }
+        val offsetSec = (absoluteMs / 1000L)
+        AppLog.i(TAG, "Seek via timeOffset=${offsetSec}s (transcoded stream has no Range support)")
+        timeOffsetBaseMs = offsetSec * 1000L
+        val fresh = buildMediaItem(song, timeOffsetMs = timeOffsetBaseMs)
+        // Mark the replacement BEFORE it happens: the PLAYLIST_CHANGED
+        // transition it posts must not run onTrackChanged (which would zero
+        // timeOffsetBaseMs and knock the seek bar back to the start).
+        selfReplacedMediaId = song.id
+        p.replaceMediaItem(idx, fresh)
+        p.prepare()
+        p.playWhenReady = true
+        _positionMs.value = absoluteMs
+        // the seek bar ALWAYS shows the full track: the offset stream only
+        // contains the tail, so its own duration must never overwrite the
+        // metadata duration (that shrank the bar and made opus/mp3 seek
+        // targets past the tail unreachable)
+        if (song.durationMs > 0) _durationMs.value = song.durationMs
+        _stalled.value = false
+        requestAudioFocus()
+    }
+
+    /**
+     * The disk cache holds a truncated/corrupt entry for this song (the
+     * stream reports a fraction of the real duration). Evict every cache
+     * entry of the song and reload a fresh stream so the track plays in
+     * full instead of "starting almost over" and instantly crossfading away.
+     */
+    private fun healCorruptCache(song: PlayerSong, streamDur: Long, metaDur: Long) {
+        if (!healedSongs.add(song.id)) return
+        val p = activeP ?: return
+        AppLog.e(
+            TAG,
+            "Corrupt cache detected for '${song.title}': stream=${streamDur}ms vs metadata=${metaDur}ms — " +
+                "evicting cache entries and reloading",
+        )
+        runCatching {
+            val cache = org.squidify.android.App.graph().mediaCache(context)
+            cache.keys.filter { it == "sq-${song.id}" || it.startsWith("sq-${song.id}-") }
+                .forEach { key ->
+                    AppLog.d(TAG, "Evicting cache entry $key")
+                    cache.removeResource(key)
+                }
+        }.onFailure { t ->
+            AppLog.w(TAG, "Cache eviction failed: ${t.javaClass.simpleName}: ${t.message}")
+        }
+        // fresh stream, same queue position — playback restarts from the top
+        // of the (now healthy) track
+        timeOffsetBaseMs = 0L
+        val idx = p.currentMediaItemIndex
+        if (idx >= 0) {
+            selfReplacedMediaId = song.id
+            p.replaceMediaItem(idx, buildMediaItem(song))
+            p.prepare()
+            p.playWhenReady = true
+            _positionMs.value = 0L
+            _durationMs.value = metaDur
+        }
+    }
+
+    fun seekBack15() {
+        val p = positionSource() ?: return
+        seekTo(absolutePositionOf(p) - 15_000)
+    }
+
+    fun seekForward15() {
+        val p = positionSource() ?: return
+        val dur = _durationMs.value.takeIf { it > 0 } ?: p.duration.takeIf { it > 0 } ?: 0L
+        val target = absolutePositionOf(p) + 15_000
+        seekTo(if (dur > 0) target.coerceAtMost(dur) else target)
+    }
+
+    /** Absolute UI position of the player (window position + offset base). */
+    private fun absolutePositionOf(p: Player): Long =
+        (timeOffsetBaseMs + p.currentPosition).coerceAtLeast(0)
+
+    // ------------------------------------------------------------ shuffle / repeat
+
+    /**
+     * Shuffle is managed by reordering the queue itself (the player's own
+     * shuffle mode stays off) so queue, notification and crossfade always
+     * agree on what "next" means.
+     */
+    fun toggleShuffle() {
+        val p = activeP ?: return
+        val newShuffle = !_shuffle.value
+        AppLog.i(TAG, "User: shuffle ${if (newShuffle) "ON" else "OFF"}")
+        _shuffle.value = newShuffle
+        if (_queue.value.isEmpty()) return
+        if (cfState == CF_OVERLAP) {
+            finalizeCrossfadeInterrupted()
+        } else if (cfState != CF_NONE) {
+            cancelCrossfade()
+        }
+
+        val cur = _currentIndex.value
+        if (newShuffle) {
+            if (baseQueue.size != _queue.value.size) baseQueue = _queue.value
+            val current = _queue.value.getOrNull(cur)
+            val rest = _queue.value.filterIndexed { i, _ -> i != cur }
+            val target = listOfNotNull(current) + rest.shuffled(shuffleRng)
+            reorderPlaylist(p, target)
+            _queue.value = target
+        } else {
+            val base = baseQueue.ifEmpty { _queue.value }
+            reorderPlaylist(p, base)
+            _queue.value = base
+        }
+        _currentIndex.value = p.currentMediaItemIndex
+        saveQueue()
+    }
+
+    /** Rearranges the player's playlist into [target] using move calls (no re-prepare). */
+    private fun reorderPlaylist(p: Player, target: List<PlayerSong>) {
+        val cur = _queue.value.toMutableList()
+        for (i in target.indices) {
+            val wanted = target[i]
+            var j = -1
+            for (k in i until cur.size) {
+                if (cur[k] === wanted) {
+                    j = k
+                    break
+                }
+            }
+            if (j < i) continue
+            if (j != i) {
+                p.moveMediaItem(j, i)
+                cur.removeAt(j)
+                cur.add(i, wanted)
+            }
+        }
+    }
+
+    fun cycleRepeat() {
+        val p = positionSource() ?: return
+        val nextMode = when (p.repeatMode) {
+            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+            else -> Player.REPEAT_MODE_OFF
+        }
+        AppLog.i(TAG, "User: repeat → ${repeatModeName(nextMode)}")
+        setRepeatMode(nextMode)
+    }
+
+    fun setRepeatMode(mode: Int) {
+        activeP?.repeatMode = mode
+        standbyP?.repeatMode = mode
+        _repeatMode.value = mode
+    }
+
+    fun stop() {
+        AppLog.i(TAG, "Player stopped and queue cleared")
+        cancelPendingSwitch()
+        cancelCrossfade()
+        stopTicker()
+        timeOffsetBaseMs = 0L
+        pendingSeekMs = null
+        pendingSeekSongId = null
+        selfReplacedMediaId = null
+        activeP?.let {
+            it.stop()
+            it.clearMediaItems()
+            it.volume = 1f
+        }
+        standbyP?.let {
+            it.stop()
+            it.clearMediaItems()
+            it.volume = 1f
+        }
+        _queue.value = emptyList()
+        _currentIndex.value = -1
+        _positionMs.value = 0
+        _durationMs.value = 0
+        _isPlaying.value = false
+        _isBuffering.value = false
+        _stalled.value = false
+        abandonAudioFocus()
+    }
+
+    // ------------------------------------------------------------ quality
+
+    /**
+     * Rebuild the queue when streaming quality changes, preserving position.
+     * When a KHInsider track is currently playing, only the Squidify URLs are
+     * swapped in place — playback of the audible track is never interrupted.
+     */
+    fun applyQualityChange(q: StreamQuality) {
+        val p = activeP ?: return
+        if (_queue.value.isEmpty()) return
+        if (cfState != CF_NONE) cancelCrossfade()
+        val idx = p.currentMediaItemIndex
+        val curSong = _queue.value.getOrNull(idx)
+        if (curSong?.source == org.squidify.android.data.DownloadSource.KHINSIDER) {
+            // refresh every Squidify item URL without touching the playing one
+            var refreshed = 0
+            _queue.value.forEachIndexed { i, s ->
+                if (s.source == org.squidify.android.data.DownloadSource.SQUIDIFY && i != idx) {
+                    runCatching { p.replaceMediaItem(i, buildMediaItem(s)) }
+                    refreshed++
+                }
+            }
+            AppLog.i(
+                TAG,
+                "Quality → ${q.shortLabel}: refreshed $refreshed Squidify URLs without interrupting KHInsider playback",
+            )
+            return
+        }
+        val pos = absolutePositionOf(p)
+        val playing = p.playWhenReady
+        AppLog.i(
+            TAG,
+            "Applying quality change to ${_queue.value.size} tracks → ${q.shortLabel}; " +
+                "rebuilding queue at index $idx, pos $pos ms",
+        )
+        val transcoded = q != StreamQuality.ORIGINAL &&
+            curSong?.source == org.squidify.android.data.DownloadSource.SQUIDIFY &&
+            downloads.downloadedUriFor(curSong.id) == null
+        val items = _queue.value.mapIndexed { i, s ->
+            if (i == idx && transcoded) buildMediaItem(s, timeOffsetMs = pos) else buildMediaItem(s)
+        }
+        timeOffsetBaseMs = if (transcoded) (pos / 1000L) * 1000L else 0L
+        p.setMediaItems(items, idx, if (transcoded) 0L else pos)
+        p.prepare()
+        p.playWhenReady = playing
+        _positionMs.value = pos
+        _stalled.value = false
+    }
+
+    /** Re-resolve the current KHInsider track at a new quality and swap it in. */
+    fun applyKhiQualityChange() {
+        val p = activeP ?: return
+        if (cfState != CF_NONE) cancelCrossfade()
+        val idx = p.currentMediaItemIndex
+        val song = _queue.value.getOrNull(idx) ?: return
+        if (song.source != org.squidify.android.data.DownloadSource.KHINSIDER) return
+        val pos = absolutePositionOf(p)
+        val playing = p.playWhenReady
+        scope.launch {
+            val fresh = resolveKhi(song)
+            val updated = _queue.value.toMutableList().also { it[idx] = fresh }
+            _queue.value = updated
+            selfReplacedMediaId = fresh.id
+            p.replaceMediaItem(idx, buildMediaItem(fresh))
+            p.prepare()
+            p.seekTo(pos)
+            p.playWhenReady = playing
+        }
+    }
+
+    // ------------------------------------------------------------ URIs
+
+    private fun buildMediaItem(song: PlayerSong, timeOffsetMs: Long = 0L): MediaItem {
+        val quality = settings.state().value.streamingQuality
+        val (uri, artwork, cacheKey) = when (song.source) {
+            org.squidify.android.data.DownloadSource.SQUIDIFY -> {
+                val local = song.id.let { downloads.downloadedUriFor(it) }
+                if (local != null) {
+                    AppLog.i(TAG, "'${song.title}' plays from local download: $local")
+                    Triple(
+                        local,
+                        song.coverUrl ?: subsonic.coverUrl(song.coverArtId ?: song.albumId?.let { "al-$it" }),
+                        null,
+                    )
+                } else {
+                    val u = Uri.parse(subsonic.streamUrl(song.id, quality, timeOffsetMs))
+                    // no per-item log: queue building would emit one line per
+                    // track in a single millisecond and look like the app is
+                    // streaming the entire queue at once; the actual network
+                    // open (with quality in the cache key) is logged by
+                    // PlaybackIO the moment a stream really starts
+                    Triple(
+                        u,
+                        song.coverUrl ?: subsonic.coverUrl(song.coverArtId ?: song.albumId?.let { "al-$it" }),
+                        // offset windows must never share cache entries with full streams
+                        if (timeOffsetMs > 0) "sq-${song.id}-${quality.name}-off${timeOffsetMs / 1000L}"
+                        else "sq-${song.id}-${quality.name}",
+                    )
+                }
+            }
+            org.squidify.android.data.DownloadSource.KHINSIDER -> {
+                val local = song.khiTrackUrl?.let { downloads.downloadedUriForKhi(it) }
+                if (local != null) {
+                    AppLog.i(TAG, "'${song.title}' plays from local KHInsider download: $local")
+                    Triple(local, song.coverUrl, null)
+                } else {
+                    val direct = song.khiDirectUrl
+                    Triple(Uri.parse(direct ?: song.khiTrackUrl ?: ""), song.coverUrl, "khi-${song.id.hashCode()}")
+                }
+            }
+        }
+        val metadata = MediaMetadata.Builder()
+            .setTitle(song.title)
+            .setArtist(song.artist)
+            .setAlbumTitle(song.album)
+            .setArtworkUri(artwork?.let { Uri.parse(it) })
+            .build()
+        return MediaItem.Builder()
+            .setMediaId(song.id)
+            .setUri(uri)
+            .setCustomCacheKey(cacheKey)
+            .setMediaMetadata(metadata)
+            .build()
+    }
+
+    private suspend fun resolveKhi(song: PlayerSong): PlayerSong {
+        val url = song.khiTrackUrl ?: return song
+        val res = khi.resolve(url)
+        val format = when (settings.state().value.khiQuality) {
+            KhiQuality.FLAC -> "flac"
+            KhiQuality.MP3 -> "mp3"
+            KhiQuality.BEST -> if (res.flac != null) "flac" else "mp3"
+        }
+        return song.copy(khiDirectUrl = res.urlFor(format))
+    }
+
+    /** Resolve all KHI tracks before starting playback (parallel, bounded). */
+    suspend fun resolveKhiQueue(songs: List<PlayerSong>): List<PlayerSong> = coroutineScope {
+        val sem = Semaphore(6)
+        songs.map { song ->
+            async {
+                if (song.source == org.squidify.android.data.DownloadSource.KHINSIDER && song.khiDirectUrl == null) {
+                    sem.acquire()
+                    try {
+                        resolveKhi(song)
+                    } finally {
+                        sem.release()
+                    }
+                } else song
+            }
+        }.awaitAll()
+    }
+
+    // ------------------------------------------------------------ full-buffer prefetch
+
+    /** The URI + cache key the player would use for this song (null for local files). */
+    private fun playbackUri(song: PlayerSong): Pair<Uri, String>? {
+        return when (song.source) {
+            org.squidify.android.data.DownloadSource.SQUIDIFY -> {
+                if (downloads.downloadedUriFor(song.id) != null) return null // local file
+                val quality = settings.state().value.streamingQuality
+                Uri.parse(subsonic.streamUrl(song.id, quality)) to "sq-${song.id}-${quality.name}"
+            }
+            org.squidify.android.data.DownloadSource.KHINSIDER -> {
+                val direct = song.khiDirectUrl ?: return null
+                Uri.parse(direct) to "khi-${song.id.hashCode()}"
+            }
+        }
+    }
+
+    /** True when the file is already (at least partially) in the disk cache. */
+    private fun isFullyCached(song: PlayerSong): Boolean {
+        val cache = try {
+            org.squidify.android.App.graph().mediaCache(context)
+        } catch (_: Exception) {
+            return false
+        }
+        val key = playbackUri(song)?.second ?: return false
+        val len = try {
+            cache.getCachedBytes(key, 0, Long.MAX_VALUE)
+        } catch (_: Exception) {
+            return false
+        }
+        return len > 0
+    }
+
+    /**
+     * Downloads the whole file into the disk cache with visible progress.
+     * Cancellation-aware: superseded play() calls abort the download.
+     */
+    private suspend fun prefetchWholeTrack(song: PlayerSong) {
+        val (uri, key) = playbackUri(song) ?: return
+        AppLog.i(TAG, "Full-buffer mode: downloading '${song.title}' completely before playback")
+        _bufferProgress.value = _bufferProgress.value + (song.id to 0f)
+        try {
+            withContext(Dispatchers.IO) {
+                val job = coroutineContext[Job]
+                cacheWholeFile(uri, key, song.id, stillWanted = { job?.isActive != false })
+            }
+            AppLog.i(TAG, "Full-buffer: '${song.title}' fully cached")
+        } catch (e: CancellationException) {
+            AppLog.i(TAG, "Full-buffer download of '${song.title}' was superseded")
+            throw e
+        } catch (e: Exception) {
+            AppLog.w(TAG, "Full-buffer prefetch failed for '${song.title}': ${e.message} — falling back to streaming")
+        } finally {
+            _bufferProgress.value = _bufferProgress.value - song.id
+        }
+    }
+
+    /**
+     * Quietly pre-caches the next queue item so the next switch is instant
+     * even on slow connections. Always on: the whole next track lands in the
+     * disk cache in the background without any visible loading indicators.
+     */
+    private fun maybePrefetchNext() {
+        if (nextPrefetched) return
+        if (cfState != CF_NONE) return
+        val song = nextIndexAfter(_currentIndex.value)?.let { _queue.value.getOrNull(it) } ?: return
+        val (uri, key) = playbackUri(song) ?: return
+        nextPrefetched = true
+        scope.launch(Dispatchers.IO) {
+            try {
+                AppLog.d(TAG, "Pre-caching next track '${song.title}' (silent, no UI progress)")
+                cacheWholeFile(uri, key, song.id, { true }, reportProgress = false)
+                AppLog.d(TAG, "Pre-cached next track '${song.title}'")
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun cacheWholeFile(
+        uri: Uri,
+        cacheKey: String,
+        songId: String,
+        stillWanted: () -> Boolean,
+        reportProgress: Boolean = true,
+    ) {
+        val cache = org.squidify.android.App.graph().mediaCache(context)
+        val dataSource = CacheDataSource.Factory()
+            .setCache(cache)
+            .setUpstreamDataSourceFactory(
+                DefaultHttpDataSource.Factory()
+                    .setUserAgent("Squirtify/1.7.3")
+                    .setConnectTimeoutMs(15_000)
+                    .setReadTimeoutMs(30_000)
+                    .setAllowCrossProtocolRedirects(true),
+            )
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+            .createDataSource()
+        val spec = DataSpec.Builder()
+            .setUri(uri)
+            .setKey(cacheKey)
+            .build()
+        val writer = CacheWriter(dataSource, spec, null) { contentLength, bytesCached, _ ->
+            if (!stillWanted()) throw CancellationException("prefetch superseded")
+            if (reportProgress && contentLength > 0) {
+                val fraction = (bytesCached.toFloat() / contentLength).coerceIn(0f, 1f)
+                if (fraction >= 0.999f) {
+                    // all bytes are in: complete the bar immediately instead of
+                    // letting a slow CacheWriter return hold it hostage at "100%"
+                    _bufferProgress.value = _bufferProgress.value - songId
+                } else {
+                    _bufferProgress.value = _bufferProgress.value + (songId to fraction)
+                }
+            }
+        }
+        writer.cache()
+    }
+
+    // ------------------------------------------------------------ crossfade
+
+    private fun crossfadeMs(): Long = settings.state().value.crossfadeSec * 1000L
+
+    /** Next queue index, or null at the end when repeat-all is off. */
+    private fun nextIndexAfter(cur: Int): Int? {
+        val q = _queue.value
+        if (q.isEmpty()) return null
+        return when {
+            cur + 1 < q.size -> cur + 1
+            _repeatMode.value == Player.REPEAT_MODE_ALL -> 0
+            else -> null
+        }
+    }
+
+    private suspend fun maybeCrossfadeTick() {
+        val ms = crossfadeMs()
+        if (ms <= 0 || cfState != CF_NONE) return
+        val p = activeP ?: return
+        val repeatOne = _repeatMode.value == Player.REPEAT_MODE_ONE
+        // repeat-one loops stay seamless unless the user asked for crossfaded
+        // loop seams explicitly
+        if (repeatOne && !settings.state().value.crossfadeRepeatLoops) return
+        if (!p.playWhenReady || p.playbackState != Player.STATE_READY) return
+        // transcoded streams report no duration — fall back to track metadata
+        val dur = p.duration.takeIf { it > 0 } ?: _durationMs.value.takeIf { it > 0 } ?: return
+        val remaining = dur - absolutePositionOf(p)
+        if (remaining in 1..ms) {
+            beginCrossfade(remaining)
+        }
+    }
+
+    /**
+     * True crossfade: the standby player starts playing the incoming track
+     * from zero while the active one fades out — real overlap. The incoming
+     * track is normally the next queue item; with repeat-one and the
+     * "crossfade on repeat" option on, the SAME track fades into itself.
+     */
+    private suspend fun beginCrossfade(remainingMs: Long) {
+        if (cfState != CF_NONE) return // never two overlaps at once
+        val active = activeP ?: return
+        val standby = standbyP ?: return
+        val cur = _currentIndex.value
+        // The loop decision comes from the APP-level repeat state — the
+        // player instance's own repeatMode can briefly desync from it after
+        // crossfade player swaps, and taking the "next track" path at a
+        // repeat-one seam made the title jump to the next track while the
+        // looping track kept playing.
+        val repeatOneLoop = _repeatMode.value == Player.REPEAT_MODE_ONE &&
+            settings.state().value.crossfadeRepeatLoops
+        AppLog.d(
+            TAG,
+            "Crossfade arming: repeatMode=${repeatModeName(_repeatMode.value)} loopSeam=$repeatOneLoop remaining=${remainingMs}ms",
+        )
+        val nextIdx = if (repeatOneLoop) cur else nextIndexAfter(cur)
+        if (nextIdx == null) {
+            // last track of the queue, repeat off — just fade its tail out
+            AppLog.d(TAG, "Crossfade: fading out the tail of the last track")
+            cfState = CF_FADEOUT_ONLY
+            crossfadeRampJob = rampVolumes(1f, 0f, 0f, 0f, remainingMs)
+            return
+        }
+        val incoming = _queue.value.getOrNull(nextIdx) ?: return
+
+        // arm BEFORE setMediaItems: the standby's first transition callback is
+        // the launch of the overlap itself and must not finalize anything
+        cfStandbyArmed = true
+        val suffix = _queue.value.drop(nextIdx)
+        standby.setMediaItems(suffix.map { buildMediaItem(it) }, 0, 0L)
+        standby.repeatMode = active.repeatMode
+        standby.shuffleModeEnabled = false
+        standby.volume = 0f
+        standby.prepare()
+        standby.playWhenReady = true
+
+        cfOutgoingIdx = cur
+        cfIncomingIdx = nextIdx
+        cfOutgoingBaseMs = timeOffsetBaseMs
+        cfState = CF_OVERLAP
+        // the standby (now the position source) starts its item from zero
+        timeOffsetBaseMs = 0L
+
+        // UI and notification follow the incoming track from the moment it starts
+        _currentIndex.value = nextIdx
+        scrobbledCurrent = false
+        nextPrefetched = false
+        history.record(incoming)
+        requestAudioFocus()
+
+        crossfadeRampJob = rampVolumes(1f, 0f, 0f, 1f, remainingMs)
+        rebindSessionIfNeeded(standby)
+        AppLog.i(
+            TAG,
+            "Crossfade → '${incoming.title}' overlaps for ${remainingMs}ms" +
+                if (repeatOneLoop) " (repeat-one loop seam)" else "",
+        )
+    }
+
+    private fun rampVolumes(
+        fromActive: Float,
+        toActive: Float,
+        fromStandby: Float,
+        toStandby: Float,
+        durationMs: Long,
+    ): Job = scope.launch {
+        val steps = (durationMs / 50L).coerceAtLeast(1)
+        var s = 0
+        while (s < steps && isActive) {
+            val t = (s + 1f) / steps
+            activeP?.volume = fromActive + (toActive - fromActive) * t
+            standbyP?.volume = fromStandby + (toStandby - fromStandby) * t
+            delay(50)
+            s++
+        }
+    }
+
+    /**
+     * The outgoing track ended naturally: adopt the standby player (already
+     * mid-track) as the active one. Re-inserting the queue prefix keeps the
+     * player playlist identical to [_queue] without interrupting playback.
+     */
+    private fun finalizeCrossfade() {
+        if (cfState != CF_OVERLAP) return
+        val oldActive = activeP ?: return
+        val standby = standbyP ?: return
+        crossfadeRampJob?.cancel()
+        crossfadeRampJob = null
+        cfStandbyArmed = false
+        standby.volume = 1f
+
+        val prefix = _queue.value.take(cfIncomingIdx).map { buildMediaItem(it) }
+        if (prefix.isNotEmpty()) standby.addMediaItems(0, prefix)
+
+        oldActive.stop()
+        oldActive.clearMediaItems()
+        oldActive.volume = 1f
+
+        activeP = standby
+        standbyP = oldActive
+        swapListeners(oldActive, standby)
+        _currentIndex.value = standby.currentMediaItemIndex
+        cfState = CF_NONE
+        cfIncomingIdx = -1
+        cfOutgoingIdx = -1
+        _isPlaying.value = standby.isPlaying
+        saveQueue()
+        refreshTicker()
+        maybePrefetchNext()
+        AppLog.i(TAG, "Crossfade complete → '${currentSong?.title}'")
+    }
+
+    /**
+     * The user acted on the incoming player mid-overlap (skip/pause from the
+     * media notification): adopt the standby immediately at whatever state
+     * it is in and drop the outgoing track.
+     */
+    private fun finalizeCrossfadeInterrupted() {
+        if (cfState != CF_OVERLAP) return
+        val oldActive = activeP ?: return
+        val standby = standbyP ?: return
+        crossfadeRampJob?.cancel()
+        crossfadeRampJob = null
+        cfStandbyArmed = false
+
+        val prefix = _queue.value.take(cfIncomingIdx).map { buildMediaItem(it) }
+        if (prefix.isNotEmpty()) standby.addMediaItems(0, prefix)
+
+        oldActive.stop()
+        oldActive.clearMediaItems()
+        oldActive.volume = 1f
+
+        activeP = standby
+        standbyP = oldActive
+        swapListeners(oldActive, standby)
+        _currentIndex.value = standby.currentMediaItemIndex
+        cfState = CF_NONE
+        cfIncomingIdx = -1
+        cfOutgoingIdx = -1
+        _isPlaying.value = standby.isPlaying
+        scrobbledCurrent = false
+        nextPrefetched = false
+        currentSong?.let { history.record(it) }
+        saveQueue()
+        refreshTicker()
+        AppLog.i(TAG, "Crossfade interrupted by user → '${currentSong?.title}'")
+    }
+
+    /**
+     * After a crossfade the two players trade roles — their listeners must
+     * trade roles too, otherwise the AUDIBLE player ends up with the silent
+     * standby listener (whose callbacks are crossfade-only) and every later
+     * pause/play becomes invisible to the UI: the button froze on a triangle
+     * while the music kept toggling. [activeListener] always tracks whichever
+     * player is audible.
+     */
+    private fun swapListeners(oldActive: Player, newActive: Player) {
+        oldActive.removeListener(activeListener)
+        oldActive.removeListener(standbyListener)
+        newActive.removeListener(activeListener)
+        newActive.removeListener(standbyListener)
+        newActive.addListener(activeListener)
+        oldActive.addListener(standbyListener)
+    }
+
+    /** Drops a running crossfade and goes back to plain playback of the old track. */
+    private fun cancelCrossfade() {
+        if (cfState == CF_NONE) return
+        crossfadeRampJob?.cancel()
+        crossfadeRampJob = null
+        cfStandbyArmed = false
+        if (cfState == CF_OVERLAP) {
+            standbyP?.let { st ->
+                st.stop()
+                st.clearMediaItems()
+                st.volume = 1f
+            }
+            // the UI rolls back to the track that is actually audible
+            if (cfOutgoingIdx >= 0 && cfOutgoingIdx < _queue.value.size) {
+                _currentIndex.value = cfOutgoingIdx
+                scrobbledCurrent = false
+            }
+            // restore the outgoing item's position base
+            timeOffsetBaseMs = cfOutgoingBaseMs
+            rebindSessionIfNeeded(activeP)
+            activeP?.volume = 1f
+        } else {
+            activeP?.volume = 1f
+        }
+        cfState = CF_NONE
+        cfIncomingIdx = -1
+        cfOutgoingIdx = -1
+        refreshTicker()
+    }
+
+    private fun rebindSessionIfNeeded(p: Player?) {
+        val player = p ?: return
+        if (sessionBoundTo === player) return
+        sessionBoundTo = player
+        sessionRebinder?.invoke(player)
+    }
+
+    private fun cancelPendingSwitch() {
+        pendingSwitch?.cancel()
+        pendingSwitch = null
+    }
+
+    // ------------------------------------------------------------ foreground
+
+    // NOTE: the app NEVER calls startForegroundService() itself anymore.
+    // Media3's MediaSessionService owns the foreground lifecycle: it promotes
+    // the service to foreground exactly when playback is ongoing and demotes
+    // it on pause. Calling ContextCompat.startForegroundService() manually
+    // (as earlier versions did) creates a 5-second obligation to call
+    // startForeground() that Media3 only fulfils once audio is actually
+    // playing — any slow resolve, playback error or pause in between made the
+    // system kill the app with ForegroundServiceDidNotStartInTimeException.
+
+    // ------------------------------------------------------------ ticker
+
+    private fun startTicker() {
+        if (ticker?.isActive == true) return
+        ticker = scope.launch {
+            while (true) {
+                val src = positionSource()
+                if (src != null) {
+                    _positionMs.value = absolutePositionOf(src)
+                    val dur = src.duration
+                    if (dur > 0) _durationMs.value = dur
+                    maybeScrobble(src)
+                    maybeCrossfadeTick()
+                    maybePrefetchNext()
+                    throttledSave()
+                }
+                // ~10 fps position updates: the seek bar glides instead of jumping
+                delay(100)
+            }
+        }
+    }
+
+    private fun stopTicker() {
+        ticker?.cancel()
+        ticker = null
+    }
+
+    private fun refreshTicker() {
+        val playing = activeP?.isPlaying == true ||
+            (cfState == CF_OVERLAP && standbyP?.isPlaying == true)
+        if (playing) startTicker() else stopTicker()
+    }
+
+    // ------------------------------------------------------------ scrobble
+
+    private fun maybeScrobble(src: Player) {
+        if (scrobbledCurrent) return
+        val song = currentSong ?: return
+        if (song.source != org.squidify.android.data.DownloadSource.SQUIDIFY) return
+        val dur = _durationMs.value
+        val pos = _positionMs.value
+        val threshold = if (dur > 0) dur / 2 else 240_000L
+        val limit = minOf(threshold, 240_000L)
+        if (limit > 0 && pos >= limit) {
+            scrobbledCurrent = true
+            scope.launch {
+                try {
+                    subsonic.scrobble(song.id)
+                    AppLog.d(TAG, "Scrobbled '${song.title}'")
+                } catch (e: Exception) {
+                    AppLog.w(TAG, "Scrobble failed for '${song.title}': ${e.message}")
+                }
+            }
+        }
+    }
+
+    private var lastSave = 0L
+
+    private fun throttledSave() {
+        val now = System.currentTimeMillis()
+        if (now - lastSave > 10_000) {
+            lastSave = now
+            saveQueue()
+        }
+    }
+
+    private fun saveQueue() {
+        saveJob?.cancel()
+        saveJob = scope.launch {
+            delay(1500)
+            val songs = _queue.value
+            if (songs.isEmpty()) return@launch
+            val squidIds = songs.filter { it.source == org.squidify.android.data.DownloadSource.SQUIDIFY }
+            if (squidIds.isEmpty()) return@launch
+            try {
+                subsonic.savePlayQueue(
+                    squidIds.map { it.id },
+                    currentSong?.takeIf { it.source == org.squidify.android.data.DownloadSource.SQUIDIFY }?.id,
+                    _positionMs.value,
+                )
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private suspend fun tryRestoreQueue() {
+        if (_queue.value.isNotEmpty()) return
+        try {
+            val state = subsonic.getPlayQueue() ?: run {
+                AppLog.d(TAG, "No server play queue to restore")
+                return
+            }
+            // The user may have picked a track WHILE the server queue was
+            // loading — their freshly started playback must never be replaced
+            // by the restored one (this was the "quick tap at launch gets
+            // stomped" bug).
+            if (_queue.value.isNotEmpty() || pendingPlayRequest != null) {
+                AppLog.d(TAG, "User already started playback — skipping queue restore")
+                return
+            }
+            val songs = state.songs.map { PlayerSong.from(it) }
+            if (songs.isEmpty()) return
+            val p = activeP ?: return
+            AppLog.i(TAG, "Restoring queue: ${songs.size} tracks, index ${state.currentIndex}, pos ${state.positionMs} ms")
+            baseQueue = songs
+            _queue.value = songs
+            p.setMediaItems(songs.map { buildMediaItem(it) }, state.currentIndex, state.positionMs)
+            p.prepare()
+            // stay paused; user taps play
+            _currentIndex.value = state.currentIndex
+            _positionMs.value = state.positionMs
+            _durationMs.value = songs.getOrNull(state.currentIndex)?.durationMs ?: 0L
+        } catch (e: Exception) {
+            AppLog.w(TAG, "Could not restore play queue: ${e.message}")
+        }
+    }
+
+    // ------------------------------------------------------------ replay gain
+    // Removed in 1.3.1: volumes are always unity, the servers deliver
+    // ready-to-play audio and normalization is not wanted.
+
+    companion object {
+        private const val TAG = "Player"
+        private const val CF_NONE = 0
+        private const val CF_OVERLAP = 1
+        private const val CF_FADEOUT_ONLY = 2
+
+        // -------------------------------------------------- log helpers
+
+        fun stateName(state: Int?): String = when (state) {
+            Player.STATE_IDLE -> "IDLE"
+            Player.STATE_BUFFERING -> "BUFFERING"
+            Player.STATE_READY -> "READY"
+            Player.STATE_ENDED -> "ENDED"
+            null -> "?"
+            else -> "?$state"
+        }
+
+        fun playWhenReadyReasonName(reason: Int): String = when (reason) {
+            1 -> "audio becoming noisy (headphones unplugged)"
+            2 -> "audio focus lost"
+            3 -> "remote (notification/assistant)"
+            4 -> "user request"
+            5 -> "end of media item"
+            else -> "?$reason"
+        }
+
+        fun transitionReasonName(reason: Int): String = when (reason) {
+            Player.MEDIA_ITEM_TRANSITION_REASON_AUTO -> "auto (next track)"
+            Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED -> "playlist changed"
+            Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT -> "repeat"
+            Player.MEDIA_ITEM_TRANSITION_REASON_SEEK -> "seek"
+            else -> "?$reason"
+        }
+
+        fun discontinuityReasonName(reason: Int): String = when (reason) {
+            0 -> "auto transition"
+            1 -> "seek"
+            2 -> "seek adjustment"
+            3 -> "old-period transition"
+            4 -> "item removed"
+            5 -> "internal"
+            else -> "?$reason"
+        }
+
+        fun repeatModeName(mode: Int): String = when (mode) {
+            Player.REPEAT_MODE_OFF -> "OFF"
+            Player.REPEAT_MODE_ONE -> "ONE"
+            Player.REPEAT_MODE_ALL -> "ALL"
+            else -> "?$mode"
+        }
+    }
+}

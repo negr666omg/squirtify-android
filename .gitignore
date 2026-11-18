@@ -1,0 +1,7 @@
+
+/local.properties
+*.keystore
+*.jks
+/part of chat with glm 5.3.txt
+.gradle/
+**/build/

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Squirtify</string>
+    <string name="channel_playback">Playback</string>
+    <string name="playback_channel">Playback</string>
+    <string name="channel_downloads">Downloads</string>
+    <string name="notif_downloading">Downloading music</string>
+    <string name="notif_download_done">Downloads finished</string>
+</resources>

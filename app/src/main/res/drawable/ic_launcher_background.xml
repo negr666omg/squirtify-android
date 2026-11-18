@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Squirtify adaptive-icon background: a soft rose gradient that lets the
+     black squid logo pop while staying in the Material You pastel family of
+     the app's #FA2D48 accent. Top = light blush, bottom = deeper rose. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:angle="270"
+        android:type="linear"
+        android:startColor="#FFE9EE"
+        android:centerColor="#FFD9E0"
+        android:endColor="#FFC3CF" />
+</shape>
