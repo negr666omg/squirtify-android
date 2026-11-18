@@ -55,6 +55,8 @@ import java.util.Locale
 
 class MainActivity : ComponentActivity() {
 
+    private var allFilesMigrationInProgress = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -181,16 +183,25 @@ class MainActivity : ComponentActivity() {
     private fun ensureAllFilesMigration(showToast: Boolean = false) {
         if (!AllFilesAccess.isGranted()) return
         val sp = getSharedPreferences("squidify_storage", MODE_PRIVATE)
-        if (!sp.getBoolean("all_files_migrated", false)) {
-            sp.edit().putBoolean("all_files_migrated", true).apply()
+        if (!sp.getBoolean("all_files_migrated", false) && !allFilesMigrationInProgress) {
+            allFilesMigrationInProgress = true
             lifecycleScope.launch {
-                App.graph().onAllFilesGranted()
-                if (showToast) {
-                    Toast.makeText(
-                        this@MainActivity,
-                        "All app data now lives in Internal storage/Squidify",
-                        Toast.LENGTH_LONG,
-                    ).show()
+                try {
+                    App.graph().onAllFilesGranted()
+                    // Mark complete only after copying and repository reloads
+                    // return. A process death during migration can now retry.
+                    sp.edit().putBoolean("all_files_migrated", true).apply()
+                    if (showToast) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "All app data now lives in Internal storage/Squidify",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                } catch (t: Throwable) {
+                    AppLog.e("Storage", "All-files migration failed; it will retry next launch", t)
+                } finally {
+                    allFilesMigrationInProgress = false
                 }
             }
         }
