@@ -40,6 +40,10 @@ fun FavouriteSongsTab() {
     val graph = App.graph()
     val scope = rememberCoroutineScope()
     val favorites by graph.favorites.songs.collectAsState()
+    val player = graph.player
+    val queue by player.queue.collectAsState()
+    val currentIndex by player.currentIndex.collectAsState()
+    val isBuffering by player.isBuffering.collectAsState()
     val actions = remember { SongActionsHandler() }
     actions.Render()
 
@@ -84,6 +88,7 @@ fun FavouriteSongsTab() {
         }
         items(songs.size, key = { songs[it].id }) { i ->
             val fav = songs[i]
+            val isCurrent = queue.getOrNull(currentIndex)?.id == fav.id
             SongRow(
                 song = org.squidify.android.data.Song(
                     id = fav.id,
@@ -106,6 +111,8 @@ fun FavouriteSongsTab() {
                     graph.subsonic.coverUrl(it, 480)
                 },
                 trailingText = if (fav.durationMs > 0) Fmt.durationMs(fav.durationMs) else null,
+                isCurrent = isCurrent,
+                isLoading = isCurrent && isBuffering,
                 onHeartClick = {
                     scope.launch { graph.favorites.toggleSong(fav.toPlayerSong()) }
                 },
