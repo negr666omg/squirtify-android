@@ -26,6 +26,7 @@ import org.squidify.android.ui.screens.library.HistoryTab
  * "Library" destination: what YOU listened to on this device, plus your
  * favourites. Server browsing lives in Search/Home.
  */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     onAlbumClick: (Album) -> Unit,
