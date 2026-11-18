@@ -66,7 +66,6 @@ fun SettingsScreen() {
     if (showQualityDialog) {
         RadioDialog(
             title = "Squidify streaming quality",
-            subtitle = "Transcoding happens on the server — the phone never converts audio",
             options = StreamQuality.entries.map { it.label },
             selected = StreamQuality.entries.indexOf(settings.streamingQuality),
             onDismiss = { showQualityDialog = false },
@@ -82,7 +81,6 @@ fun SettingsScreen() {
     if (showKhiDialog) {
         RadioDialog(
             title = "KHInsider quality",
-            subtitle = "Files are fetched exactly as they are hosted",
             options = KhiQuality.entries.map { it.label },
             selected = KhiQuality.entries.indexOf(settings.khiQuality),
             onDismiss = { showKhiDialog = false },
@@ -94,7 +92,6 @@ fun SettingsScreen() {
     if (showThemeDialog) {
         RadioDialog(
             title = "Theme",
-            subtitle = null,
             options = listOf("Auto (follow system)", "Dark", "Light"),
             selected = ThemeMode.entries.indexOf(settings.themeMode),
             onDismiss = { showThemeDialog = false },
@@ -112,19 +109,9 @@ fun SettingsScreen() {
                 .padding(horizontal = 20.dp, vertical = 16.dp),
         ) {
             Text(
-                text = "PERSONALISE",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text(
                 text = "Settings",
                 style = MaterialTheme.typography.headlineLarge,
                 color = MaterialTheme.colorScheme.onBackground,
-            )
-            Text(
-                text = "Make Squirtify work the way you like.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Row(
@@ -250,16 +237,9 @@ private fun GeneralSettings(
                     value = settings.khiQuality.label,
                     onClick = onShowKhi,
                 )
-                Text(
-                    text = "All transcoding is done by the servers — this phone never converts tracks.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 4.dp),
-                )
                 HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
                 SwitchRow(
                     title = "Download whole track before playing",
-                    subtitle = "No chunked streaming — the song starts only after it's fully loaded",
                     checked = settings.fullBuffer,
                     onChange = onFullBuffer,
                 )
@@ -272,8 +252,6 @@ private fun GeneralSettings(
                 HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
                 SwitchRow(
                     title = "Close app when swiped away",
-                    subtitle = "Removing Squirtify from Recents stops playback and fully exits the app — " +
-                        "off by default (music keeps playing in the background)",
                     checked = settings.exitOnTaskRemoved,
                     onChange = onExitOnTaskRemoved,
                 )
@@ -286,18 +264,12 @@ private fun GeneralSettings(
                 SettingsCardTitle("Storage & cache")
                 CacheSizeRow(
                     title = "Music cache (streamed tracks)",
-                    subtitle = "Replays cost no data · ${"%.0f".format(
-                        graph.mediaCacheBytes() / 1024f / 1024f,
-                    )} MB used · applies after app restart",
                     currentMb = settings.audioCacheMb,
                     onChange = onAudioCache,
                 )
                 Spacer(Modifier.padding(6.dp))
                 CacheSizeRow(
                     title = "Cover art cache",
-                    subtitle = "${"%.0f".format(
-                        graph.imageCacheBytes(context) / 1024f / 1024f,
-                    )} MB used · applies immediately",
                     currentMb = settings.imageCacheMb,
                     onChange = onImageCache,
                 )
@@ -311,15 +283,6 @@ private fun GeneralSettings(
                         runCatching { context.startActivity(AllFilesAccess.requestIntent(context)) }
                     },
                 )
-                Text(
-                    text = "With full access every piece of app data lives in one visible place — " +
-                        "Internal storage/Squidify: Downloads/ (offline music), cache/ (music + covers), " +
-                        "logs/ and UserData/ (settings, favourites). Flip the switch for Squirtify " +
-                        "on the screen that opens; cache folders apply after the next restart.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 4.dp),
-                )
                 if (!allFilesGranted) {
                     HorizontalDivider(
                         Modifier.padding(vertical = 8.dp),
@@ -329,15 +292,6 @@ private fun GeneralSettings(
                         title = "Storage folder (fallback)",
                         value = if (storageGranted) "Squidify folder ✓" else "Not set — default locations",
                         onClick = { treeLauncher.launch(null) },
-                    )
-                    Text(
-                        text = "Alternative without all-files access: pick (or create) a \"Squidify\" folder " +
-                            "via the system picker — downloads go to Squidify/Downloads, favourites and " +
-                            "settings live in Squidify/UserData. Without it the app falls back to " +
-                            "Music/ and Pictures/.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 4.dp),
                     )
                 }
                 SettingRow("Downloads saved to", graph.downloads.musicLocationLabel())
@@ -363,13 +317,11 @@ private fun GeneralSettings(
                 )
                 SwitchRow(
                     title = "Dynamic color (Material You)",
-                    subtitle = "Tint the app with your wallpaper — Android 12+",
                     checked = settings.dynamicColor,
                     onChange = onDynamicColor,
                 )
                 SwitchRow(
                     title = "Scrolling titles",
-                    subtitle = "Long names scroll side-to-side instead of being cut off",
                     checked = settings.scrollingText,
                     onChange = onScrollingText,
                 )
@@ -382,7 +334,6 @@ private fun GeneralSettings(
                 SettingsCardTitle("Sources")
                 SwitchRow(
                     title = "Show KHInsider in search",
-                    subtitle = "Adds a second source for game soundtracks",
                     checked = settings.khiEnabled,
                     onChange = onKhiEnabled,
                 )
@@ -499,15 +450,9 @@ private fun CrossfadeRow(
             valueRange = 0f..12f,
             steps = 11,
         )
-        Text(
-            text = "Smoothly blends the end of one track into the next — real overlap",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         if (seconds > 0) {
             SwitchRow(
                 title = "Crossfade when a track repeats",
-                subtitle = "Blend the loop seam of a repeating track too",
                 checked = repeatLoops,
                 onChange = onRepeatLoops,
             )
@@ -526,7 +471,6 @@ private fun mbLabel(mb: Int): String =
 @Composable
 private fun CacheSizeRow(
     title: String,
-    subtitle: String,
     currentMb: Int,
     onChange: (Int) -> Unit,
 ) {
@@ -552,11 +496,6 @@ private fun CacheSizeRow(
             onValueChangeFinished = { onChange(CACHE_STEPS_MB[sel]) },
             valueRange = 0f..(CACHE_STEPS_MB.lastIndex.toFloat()),
             steps = CACHE_STEPS_MB.lastIndex - 1,
-        )
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -627,7 +566,6 @@ private fun ClickableRow(title: String, value: String, onClick: () -> Unit) {
 @Composable
 private fun SwitchRow(
     title: String,
-    subtitle: String,
     checked: Boolean,
     onChange: (Boolean) -> Unit,
 ) {
@@ -637,18 +575,12 @@ private fun SwitchRow(
             .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
         Switch(checked = checked, onCheckedChange = onChange)
     }
 }
@@ -658,7 +590,6 @@ private fun SwitchRow(
 @Composable
 private fun RadioDialog(
     title: String,
-    subtitle: String?,
     options: List<String>,
     selected: Int,
     onDismiss: () -> Unit,
@@ -673,13 +604,6 @@ private fun RadioDialog(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState()),
             ) {
-                if (subtitle != null) {
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
                 options.forEachIndexed { i, opt ->
                     Row(
                         modifier = Modifier
