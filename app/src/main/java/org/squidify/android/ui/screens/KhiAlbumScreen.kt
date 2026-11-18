@@ -80,6 +80,8 @@ fun KhiAlbumScreen(
         error = null
         try {
             album = graph.khi.album(albumUrl)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             error = e.message
         }
