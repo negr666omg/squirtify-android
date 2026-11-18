@@ -280,7 +280,7 @@ fun AlbumScreen(
                         // next to the really-playing one ("two highlighted
                         // tracks at once").
                         val highlighted = highlightTrackId == song.id &&
-                            (currentId == null || currentId == song.id)
+                            (currentSongId == null || currentSongId == song.id)
                         // Loading feedback lives ON the tapped row (spinner at
                         // its trailing edge), not on the album header — the eye
                         // stays where the tap happened.
