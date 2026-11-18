@@ -854,11 +854,19 @@ class PlayerManager(
         val durationTrustworthy = timeOffsetBaseMs == 0L &&
             (nativeDur <= 0 || metaDur <= 0 || kotlin.math.abs(nativeDur - metaDur) < 10_000L)
         val seekable = p.isCurrentMediaItemSeekable
+        val fullyCached = transcodedStream && isFullyCached(song)
+        val nativeSeekSafe = shouldUseNativeSeek(
+            isTranscoded = transcodedStream,
+            isSeekable = seekable,
+            durationTrustworthy = durationTrustworthy,
+            isFullyCached = fullyCached,
+        )
         AppLog.i(
             TAG,
-            "Seek → ${pos}ms (native-seekable=$seekable, durationOk=$durationTrustworthy, timeOffsetBase=$timeOffsetBaseMs) — '${song.title}'",
+            "Seek → ${pos}ms (native-seekable=$seekable, full-cache=$fullyCached, native-safe=$nativeSeekSafe, " +
+                "durationOk=$durationTrustworthy, timeOffsetBase=$timeOffsetBaseMs) — '${song.title}'",
         )
-        if (seekable && durationTrustworthy) {
+        if (nativeSeekSafe) {
             p.seekTo(pos)
             _positionMs.value = pos
         } else if (transcodedStream) {
