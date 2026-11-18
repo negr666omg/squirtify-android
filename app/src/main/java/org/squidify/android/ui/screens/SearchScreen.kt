@@ -86,6 +86,10 @@ fun SearchScreen(
     val songActions = remember { SongActionsHandler() }
     songActions.Render()
     val favSongIds by graph.favorites.songIds.collectAsState()
+    val player = graph.player
+    val playerQueue by player.queue.collectAsState()
+    val playerIndex by player.currentIndex.collectAsState()
+    val playerBuffering by player.isBuffering.collectAsState()
 
     LaunchedEffect(Unit) {
         graph.settings.searchHistory.collect { history = it }
@@ -327,10 +331,7 @@ fun SearchScreen(
                 item { SectionHeader("Tracks") }
                 items(songs!!.size, key = { j -> songs!![j].id }) { i ->
                     val song = songs!![i]
-                    val player = App.graph().player
-                    val queue by player.queue.collectAsState()
-                    val idx by player.currentIndex.collectAsState()
-                    val isCurrent = queue.getOrNull(idx)?.id == song.id
+                    val isCurrent = playerQueue.getOrNull(playerIndex)?.id == song.id
                     SongRow(
                         // hearts are local favourites
                         song = song.copy(starred = if (song.id in favSongIds) "now" else null),
@@ -342,6 +343,7 @@ fun SearchScreen(
                         },
                         coverUrl = SongCover(song),
                         isCurrent = isCurrent,
+                        isLoading = isCurrent && playerBuffering,
                         showAlbum = true,
                         trailingText = Fmt.duration(song.duration?.toLong()),
                         onHeartClick = {
