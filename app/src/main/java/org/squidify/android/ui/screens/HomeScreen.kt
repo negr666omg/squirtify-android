@@ -32,6 +32,7 @@ import org.squidify.android.data.Album
 import org.squidify.android.data.DownloadSource
 import org.squidify.android.data.HistoryEntry
 import org.squidify.android.ui.components.CoverArt
+import org.squidify.android.ui.components.bouncyClickable
 import org.squidify.android.ui.components.ErrorRetry
 import org.squidify.android.ui.components.LoadingShelf
 import org.squidify.android.ui.components.SectionHeader
@@ -238,7 +239,7 @@ private fun RecentAlbumCard(
             .width(166.dp)
             .clip(RoundedCornerShape(22.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .clickable(onClick = onClick)
+            .bouncyClickable(onClick = onClick)
             .padding(9.dp),
     ) {
         CoverArt(
