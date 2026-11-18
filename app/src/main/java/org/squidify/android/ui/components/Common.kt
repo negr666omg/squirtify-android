@@ -211,7 +211,7 @@ fun AlbumCard(
             .then(sizeModifier)
             .clip(RoundedCornerShape(22.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .clickable(onClick = onClick)
+            .bouncyClickable(onClick = onClick)
             .padding(9.dp),
     ) {
         CoverArt(
