@@ -698,7 +698,7 @@ class DownloadManager(
                 if (isRange) {
                     val contentRange = resp.header("Content-Range")
                     val match = contentRange?.let {
-                        Regex("""^bytes (\\d+)-(\\d+)/(\\d+|\\*)$""").matchEntire(it.trim())
+                        Regex("""^bytes (\d+)-(\d+)/(\d+|\*)$""").matchEntire(it.trim())
                     }
                     val rangeStart = match?.groupValues?.get(1)?.toLongOrNull()
                     val rangeEnd = match?.groupValues?.get(2)?.toLongOrNull()
