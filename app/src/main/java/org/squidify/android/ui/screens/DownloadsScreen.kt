@@ -46,6 +46,8 @@ import org.squidify.android.data.DownloadSource
 import org.squidify.android.data.DownloadStatus
 import org.squidify.android.data.FavSong
 import org.squidify.android.data.HistoryEntry
+import org.squidify.android.data.OfflineAlbumSnapshot
+import org.squidify.android.data.Song
 import org.squidify.android.player.PlayerSong
 import org.squidify.android.ui.components.CoverArt
 import org.squidify.android.ui.components.EmptyState
@@ -85,6 +87,10 @@ fun DownloadsScreen() {
     val jobs by graph.downloads.jobs.collectAsState()
     val historyEntries by graph.history.entries.collectAsState()
     val favSongs by graph.favorites.songs.collectAsState()
+    val cachedAlbums by graph.offlineLibrary.albums.collectAsState()
+    val settings by graph.settings.state().collectAsState()
+    val hasInternet by graph.networkMonitor.hasValidatedInternet.collectAsState()
+    val offlineMode = settings.offlineMode || !hasInternet
 
     val active = jobs.filter { it.status == DownloadStatus.RUNNING }
     val queued = jobs.filter { it.status == DownloadStatus.QUEUED }
@@ -122,7 +128,11 @@ fun DownloadsScreen() {
         return graph.subsonic.coverUrl(coverArtId)
     }
 
-    // The library: finished audio downloads grouped by album
+    // The library: downloaded albums enriched with a persisted full tracklist.
+    val cachedByKey = cachedAlbums.associateBy {
+        downloadAlbumKey(it.albumName, it.artist, it.source)
+    }
+
     data class AlbumGroup(
         val key: DownloadAlbumKey,
         val name: String,
@@ -130,20 +140,23 @@ fun DownloadsScreen() {
         val artist: String?,
         val jobs: List<DownloadJob>,
         val totalBytes: Long,
+        val snapshot: OfflineAlbumSnapshot?,
     )
 
     val groups = done
         .groupBy { downloadAlbumKey(it.album, it.artist, it.source) }
         .map { (key, list) ->
+            val snapshot = cachedByKey[key]
             AlbumGroup(
                 key = key,
                 name = key.albumName,
-                coverUrl = list.firstNotNullOfOrNull { coverFor(it) },
-                artist = list.firstNotNullOfOrNull { it.artist },
+                coverUrl = snapshot?.coverUrl ?: list.firstNotNullOfOrNull { coverFor(it) },
+                artist = list.firstNotNullOfOrNull { it.artist } ?: snapshot?.artist,
                 jobs = list.sortedWith(
                     compareBy({ trackNumberFromFileName(it.fileName) }, { it.title }),
                 ),
                 totalBytes = list.sumOf { it.totalBytes },
+                snapshot = snapshot,
             )
         }
         .sortedByDescending { g -> g.jobs.maxOf { it.completedAt ?: it.createdAt } }
@@ -256,7 +269,7 @@ fun DownloadsScreen() {
                         name = group.name,
                         artist = group.artist,
                         coverUrl = group.coverUrl,
-                        trackCount = group.jobs.size,
+                        trackCount = group.snapshot?.trackCount?.takeIf { it > 0 } ?: group.jobs.size,
                         totalBytes = group.totalBytes,
                         expanded = expandedAlbum == group.key,
                         onToggle = {
@@ -266,11 +279,81 @@ fun DownloadsScreen() {
                     )
                 }
                 if (expandedAlbum == group.key) {
-                    items(group.jobs.size, key = { groupKeys[it] }) { i ->
-                        LibraryTrackRow(
-                            job = group.jobs[i],
-                            onPlay = { playGroup(group, i) },
-                        )
+                    when {
+                        group.snapshot?.source == DownloadSource.SQUIDIFY &&
+                            group.snapshot.tracks.isNotEmpty() -> {
+                            val snapshot = group.snapshot
+                            items(
+                                snapshot.tracks.size,
+                                key = { i -> "cached-${group.key.hashCode()}-${snapshot.tracks[i].id}" },
+                            ) { i ->
+                                val track = snapshot.tracks[i]
+                                val downloaded = group.jobs.firstOrNull { it.songId == track.id }
+                                CachedLibraryTrackRow(
+                                    title = track.title,
+                                    number = track.track,
+                                    subtitle = if (downloaded != null) {
+                                        listOfNotNull(
+                                            downloaded.qualityLabel.ifBlank { downloaded.format.uppercase() },
+                                            Fmt.bytes(downloaded.totalBytes.takeIf { it > 0 } ?: downloaded.bytes),
+                                            track.duration?.let { Fmt.duration(it.toLong()) },
+                                        ).joinToString(" · ")
+                                    } else {
+                                        listOfNotNull(track.suffix?.uppercase(), track.duration?.let { Fmt.duration(it.toLong()) }, "Not downloaded").joinToString(" · ")
+                                    },
+                                    downloaded = downloaded != null,
+                                    disabled = offlineMode && downloaded == null,
+                                    onPlay = {
+                                        val playerSongs = snapshot.tracks.map { song ->
+                                            PlayerSong.from(song).copy(coverUrl = snapshot.coverUrl)
+                                        }
+                                        graph.player.play(playerSongs, i)
+                                    },
+                                )
+                            }
+                        }
+                        group.snapshot?.source == DownloadSource.KHINSIDER &&
+                            group.snapshot.khiTracks.isNotEmpty() -> {
+                            val snapshot = group.snapshot
+                            items(
+                                snapshot.khiTracks.size,
+                                key = { i -> "cached-khi-${group.key.hashCode()}-$i-${snapshot.khiTracks[i].url}" },
+                            ) { i ->
+                                val track = snapshot.khiTracks[i]
+                                val downloaded = group.jobs.firstOrNull { it.requestUrl == track.url }
+                                CachedLibraryTrackRow(
+                                    title = track.title,
+                                    number = track.number.takeIf { it > 0 },
+                                    subtitle = listOfNotNull(
+                                        track.duration,
+                                        downloaded?.let { Fmt.bytes(it.totalBytes.takeIf { n -> n > 0 } ?: it.bytes) },
+                                        if (downloaded == null) "Not downloaded" else null,
+                                    ).joinToString(" · "),
+                                    downloaded = downloaded != null,
+                                    disabled = offlineMode && downloaded == null,
+                                    onPlay = {
+                                        val playerSongs = snapshot.khiTracks.map { item ->
+                                            PlayerSong.fromKhi(
+                                                snapshot.albumName,
+                                                item.title,
+                                                item.url,
+                                                item.duration,
+                                                snapshot.coverUrl,
+                                            )
+                                        }
+                                        graph.player.play(playerSongs, i)
+                                    },
+                                )
+                            }
+                        }
+                        else -> {
+                            items(group.jobs.size, key = { groupKeys[it] }) { i ->
+                                LibraryTrackRow(
+                                    job = group.jobs[i],
+                                    onPlay = { playGroup(group, i) },
+                                )
+                            }
+                        }
                     }
                 }
             }
