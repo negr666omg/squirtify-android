@@ -105,6 +105,7 @@ fun NowPlayingScreen(
     val idx by player.currentIndex.collectAsState()
     val isPlaying by player.isPlaying.collectAsState()
     val stalled by player.stalled.collectAsState()
+    val isBuffering by player.isBuffering.collectAsState()
     val shuffle by player.shuffle.collectAsState()
     val repeatMode by player.repeatMode.collectAsState()
 
@@ -225,7 +226,7 @@ fun NowPlayingScreen(
                     isPlaying = isPlaying,
                     // the cover only "breathes" when playback audibly stopped;
                     // background loads and track preloads never blink it
-                    buffering = stalled,
+                    buffering = isBuffering || stalled,
                     shuffle = shuffle,
                     repeatMode = repeatMode,
                     isHearted = isHearted,
@@ -612,17 +613,24 @@ private fun PlayingTab(
                     .clickable(interactionSource = playIsr, indication = androidx.compose.material3.ripple(), onClick = onTogglePlay),
                 contentAlignment = Alignment.Center,
             ) {
+                if (buffering) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(46.dp),
+                        strokeWidth = 2.5.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                }
                 if (isPlaying) {
                     Icon(
                         imageVector = SqIcons.Pause,
-                        contentDescription = "Pause",
+                        contentDescription = if (buffering) "Buffering — pause" else "Pause",
                         tint = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier.size(34.dp),
                     )
                 } else {
                     Icon(
                         imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = "Play",
+                        contentDescription = if (buffering) "Buffering" else "Play",
                         tint = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier.size(38.dp),
                     )
