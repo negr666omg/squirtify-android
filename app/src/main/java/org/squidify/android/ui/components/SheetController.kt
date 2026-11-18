@@ -1,10 +1,8 @@
 package org.squidify.android.ui.components
 
-import android.os.SystemClock
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.TweenSpec
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -13,24 +11,12 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 /**
- * Drives the Now-Playing sheet motion with a single float that is ONLY ever
- * read inside [androidx.compose.ui.graphics.graphicsLayer] blocks.
- *
- * Every frame of the open/close glide — and every pixel of a finger drag —
- * costs exactly one graphics-layer update: no recomposition, no re-layout.
- * That is what keeps the sheet at the display's full frame rate even on
- * older GPUs, where the previous AnimatedVisibility-based sheet visibly
- * dropped to ~20 fps because the whole screen recomposed 10x per second
- * (position ticker) right through the animation.
- *
- * Drags write [progress] SYNCHRONOUSLY (same trick the swipe-dismiss code
- * used): a coroutine hop per delta would lag behind the finger. The glides
- * run in a coroutine that cancels itself whenever a finger takes over, so
- * opening/closing is fully interruptible and reversible mid-flight — tap the
- * mini player while the sheet is still closing and it glides straight back
- * up without ever re-creating its content.
+ * Drives the Now Playing sheet with one progress value read by graphicsLayer.
+ * Dragging follows the finger directly; release settles with a velocity-aware
+ * spring rather than snapping to a fixed-duration tween.
  */
 @Stable
 class SheetController(private val scope: CoroutineScope) {
@@ -45,69 +31,82 @@ class SheetController(private val scope: CoroutineScope) {
 
     private var glide: Job? = null
 
-    // swipe-dismiss velocity, in screen-heights per second (> 0 = downward)
+    // Fallback velocity estimate for callers that do not supply a VelocityTracker.
     private var dragVelocity = 0f
     private var lastDragMs = 0L
 
     fun open() {
         composed = true
-        glideTo(1f, OPEN_SPEC)
+        glideTo(1f)
     }
 
     fun close() {
         if (progress <= 0f && !composed) return
-        glideTo(0f, CLOSE_SPEC)
+        glideTo(0f)
     }
 
-    /** Finger moved — the sheet tracks it 1:1 with no coroutine hop. */
+    /** Finger moved — update synchronously so the surface stays under the finger. */
     fun dragDelta(dy: Float, viewHeightPx: Float) {
         if (!composed || viewHeightPx <= 0f) return
         glide?.cancel()
         glide = null
-        val now = SystemClock.uptimeMillis()
-        if (lastDragMs > 0) {
-            val dt = (now - lastDragMs).coerceAtLeast(1)
+        val now = android.os.SystemClock.uptimeMillis()
+        if (lastDragMs > 0L) {
+            val dt = (now - lastDragMs).coerceAtLeast(1L)
             dragVelocity = (dy / viewHeightPx) * 1000f / dt
         }
         lastDragMs = now
         progress = (progress - dy / viewHeightPx).coerceIn(0f, 1f)
     }
 
-    /** Finger lifted — settle back open or finish the dismissal. */
-    fun dragEnd() {
-        lastDragMs = 0
+    /**
+     * Settle based on both distance and release velocity. A quick short swipe
+     * can dismiss; a slow short pull returns open without an artificial
+     * mid-screen attraction.
+     */
+    fun dragEnd(fingerVelocityY: Float? = null, viewHeightPx: Float = 0f) {
+        lastDragMs = 0L
+        val progressVelocity = if (fingerVelocityY != null && viewHeightPx > 0f) {
+            (-fingerVelocityY / viewHeightPx).coerceIn(-4f, 4f)
+        } else {
+            (-dragVelocity).coerceIn(-4f, 4f)
+        }
         val draggedDown = 1f - progress
-        val dismiss = draggedDown > 0.22f || (dragVelocity > 2.2f && draggedDown > 0.06f)
         dragVelocity = 0f
-        if (dismiss) close() else open()
+
+        val fastDownwardFling = progressVelocity < -1.05f && draggedDown > 0.025f
+        val close = draggedDown > 0.28f || fastDownwardFling
+        glideTo(if (close) 0f else 1f, initialVelocity = progressVelocity)
     }
 
-    private fun glideTo(target: Float, spec: TweenSpec<Float>) {
+    private fun glideTo(target: Float, initialVelocity: Float = 0f) {
         glide?.cancel()
         glide = scope.launch {
             val from = progress
-            if (from == target) {
+            if (abs(from - target) < 0.0005f) {
+                progress = target
                 if (target <= 0f) composed = false
                 return@launch
             }
-            animate(initialValue = from, targetValue = target, animationSpec = spec) { v, _ ->
-                progress = v
+            animate(
+                initialValue = from,
+                targetValue = target,
+                initialVelocity = initialVelocity,
+                animationSpec = SETTLE_SPEC,
+            ) { value, _ ->
+                progress = value.coerceIn(0f, 1f)
             }
-            // dispose the content only after the closing glide has fully
-            // finished — removing it mid-animation would pop it out of sight
             if (target <= 0f) composed = false
         }
     }
 
     companion object {
-        // The Android 12+ activity/sheet interpolators: a strong decelerate
-        // on the way in (fast start, long silky glide to rest) and an
-        // accelerate on the way out. This is what "standard Android
-        // animations" feel like.
-        private val SheetDecelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
-        private val SheetAccelerate = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
-
-        val OPEN_SPEC: TweenSpec<Float> = tween(420, easing = SheetDecelerate)
-        val CLOSE_SPEC: TweenSpec<Float> = tween(300, easing = SheetAccelerate)
+        // Critically controlled, low-bounce settle with enough response to
+        // preserve the user's fling direction and speed.
+        private val SETTLE_SPEC = spring<Float>(
+            dampingRatio = 0.92f,
+            stiffness = 420f,
+            visibilityThreshold = 0.001f,
+        )
     }
 }
