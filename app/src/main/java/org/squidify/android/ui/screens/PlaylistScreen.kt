@@ -12,6 +12,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +43,10 @@ fun PlaylistScreen(
 ) {
     val graph = App.graph()
     val scope = rememberCoroutineScope()
+    val player = graph.player
+    val queue by player.queue.collectAsState()
+    val currentIndex by player.currentIndex.collectAsState()
+    val isBuffering by player.isBuffering.collectAsState()
     var playlist by remember { mutableStateOf<org.squidify.android.data.Playlist?>(null) }
     var songs by remember { mutableStateOf<List<Song>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -162,12 +168,15 @@ fun PlaylistScreen(
                     }
                     items(list.size, key = { list[it].id }) { i ->
                         val song = list[i]
+                        val isCurrent = queue.getOrNull(currentIndex)?.id == song.id
                         SongRow(
                             song = song,
                             onClick = {
                                 scope.launch { App.graph().player.play(list.map { PlayerSong.from(it) }, i) }
                             },
                             coverUrl = SongCover(song),
+                            isCurrent = isCurrent,
+                            isLoading = isCurrent && isBuffering,
                             showAlbum = true,
                             trailingText = Fmt.duration(song.duration?.toLong()),
                             onMenuClick = { actions.show(song, i) },
