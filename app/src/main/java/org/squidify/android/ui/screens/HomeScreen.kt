@@ -118,11 +118,11 @@ fun HomeScreen(
                 Text(
                     text = "Offline",
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (settings.offlineMode) MaterialTheme.colorScheme.primary
+                    color = if (settings.offlineMode || !hasInternet) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Switch(
-                    checked = settings.offlineMode,
+                    checked = settings.offlineMode || !hasInternet,
                     onCheckedChange = { enabled ->
                         scope.launch { graph.settings.setOfflineMode(enabled) }
                     },
