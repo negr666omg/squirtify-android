@@ -106,6 +106,18 @@ class PlayerManager(
         _playbackError.value = null
     }
 
+    /** Retry the selected track, forcing fresh KHInsider links when needed. */
+    fun retryCurrent() {
+        val index = _currentIndex.value
+        if (index !in _queue.value.indices) return
+        val retryQueue = _queue.value.map { song ->
+            if (song.source == org.squidify.android.data.DownloadSource.KHINSIDER) {
+                song.copy(khiDirectUrl = null)
+            } else song
+        }
+        play(retryQueue, index, shuffled = _shuffle.value)
+    }
+
     private val _positionMs = MutableStateFlow(0L)
     val positionMs: StateFlow<Long> = _positionMs.asStateFlow()
 
@@ -1216,14 +1228,39 @@ class PlayerManager(
         val pos = absolutePositionOf(p)
         val playing = p.playWhenReady
         scope.launch {
-            val fresh = resolveKhi(song)
-            val updated = _queue.value.toMutableList().also { it[idx] = fresh }
-            _queue.value = updated
-            selfReplacedMediaId = fresh.id
-            p.replaceMediaItem(idx, buildMediaItem(fresh))
-            p.prepare()
-            p.seekTo(pos)
-            p.playWhenReady = playing
+            _isBuffering.value = true
+            try {
+                val fresh = resolveKhi(song)
+                // Resolving a direct URL can take long enough for the queue
+                // or crossfade roles to change. Re-acquire and validate the
+                // currently audible player instead of mutating a stale one.
+                val active = activeP ?: return@launch
+                val currentIdx = active.currentMediaItemIndex
+                if (
+                    currentSong?.id != song.id ||
+                    currentIdx !in _queue.value.indices ||
+                    active.currentMediaItem?.mediaId != song.id
+                ) return@launch
+
+                val updated = _queue.value.toMutableList().also { it[currentIdx] = fresh }
+                _queue.value = updated
+                if (!_shuffle.value) baseQueue = updated
+                selfReplacedMediaId = fresh.id
+                active.replaceMediaItem(currentIdx, buildMediaItem(fresh))
+                active.prepare()
+                active.seekTo(pos)
+                active.playWhenReady = playing
+                _playbackError.value = null
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLog.e(TAG, "Could not change KHInsider playback quality", e)
+                _playbackError.value = "Couldn't change audio quality. Playback was left unchanged."
+            } finally {
+                if (activeP?.playbackState != Player.STATE_BUFFERING) {
+                    _isBuffering.value = false
+                }
+            }
         }
     }
 
