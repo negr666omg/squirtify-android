@@ -20,8 +20,8 @@ android {
         applicationId = "org.squidify.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "1.7.3"
+        versionCode = 16
+        versionName = "1.7.4"
     }
 
     val keystoreFile = rootProject.file("squidify.keystore")
@@ -86,7 +86,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.ui:ui-text-google-fonts") // optional font loading helpers
 
-    val media3 = "1.5.1"
+    val media3 = "1.11.1"
     implementation("androidx.media3:media3-exoplayer:$media3")
     implementation("androidx.media3:media3-session:$media3")
     implementation("androidx.media3:media3-common:$media3")
