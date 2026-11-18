@@ -135,6 +135,7 @@ fun SettingsScreen() {
                 onTheme = { m -> scope.launch { graph.settings.setThemeMode(m) } },
                 onDynamicColor = { on -> scope.launch { graph.settings.setDynamicColor(on) } },
                 onScrollingText = { on -> scope.launch { graph.settings.setScrollingText(on) } },
+                onHideNowPlayingArtist = { on -> scope.launch { graph.settings.setHideNowPlayingArtist(on) } },
                 onExitOnTaskRemoved = { on -> scope.launch { graph.settings.setExitOnTaskRemoved(on) } },
                 onCrossfade = { sec -> scope.launch { graph.settings.setCrossfadeSec(sec) } },
                 onCrossfadeRepeatLoops = { on -> scope.launch { graph.settings.setCrossfadeRepeatLoops(on) } },
@@ -177,6 +178,7 @@ private fun GeneralSettings(
     onTheme: (ThemeMode) -> Unit,
     onDynamicColor: (Boolean) -> Unit,
     onScrollingText: (Boolean) -> Unit,
+    onHideNowPlayingArtist: (Boolean) -> Unit,
     onExitOnTaskRemoved: (Boolean) -> Unit,
     onCrossfade: (Int) -> Unit,
     onCrossfadeRepeatLoops: (Boolean) -> Unit,
@@ -324,6 +326,11 @@ private fun GeneralSettings(
                     title = "Scrolling titles",
                     checked = settings.scrollingText,
                     onChange = onScrollingText,
+                )
+                SwitchRow(
+                    title = "Hide artist in Now Playing",
+                    checked = settings.hideNowPlayingArtist,
+                    onChange = onHideNowPlayingArtist,
                 )
             }
         }
