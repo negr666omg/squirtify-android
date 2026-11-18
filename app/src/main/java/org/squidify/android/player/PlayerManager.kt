@@ -1580,8 +1580,8 @@ class PlayerManager(
             .setUpstreamDataSourceFactory(
                 DefaultHttpDataSource.Factory()
                     .setUserAgent("Squirtify/1.7.4")
-                    .setConnectTimeoutMs(15_000)
-                    .setReadTimeoutMs(30_000)
+                    .setConnectTimeoutMs(10_000)
+                    .setReadTimeoutMs(15_000)
                     .setAllowCrossProtocolRedirects(true),
             )
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
