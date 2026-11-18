@@ -61,7 +61,9 @@ fun PlaylistScreen(
                 try {
                     graph.subsonic.updatePlaylist(playlistId, songIndexesToRemove = listOf(index))
                     songs = songs?.filterIndexed { i, _ -> i != index }
-                } catch (_: Exception) {
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
                 }
             }
         })
@@ -74,6 +76,8 @@ fun PlaylistScreen(
             val (p, s) = graph.subsonic.getPlaylist(playlistId)
             playlist = p
             songs = s
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             error = e.message
         }
@@ -99,7 +103,9 @@ fun PlaylistScreen(
                         try {
                             graph.subsonic.updatePlaylist(playlistId, name = name)
                             playlist = playlist?.copy(name = name)
-                        } catch (_: Exception) {
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
                         }
                         showRename = false
                     }
@@ -119,7 +125,9 @@ fun PlaylistScreen(
                     scope.launch {
                         try {
                             graph.subsonic.deletePlaylist(playlistId)
-                        } catch (_: Exception) {
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
                         }
                         onBack()
                     }
