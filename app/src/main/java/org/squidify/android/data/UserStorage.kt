@@ -208,7 +208,7 @@ class UserStorage(private val context: Context) {
      */
     fun migrateInternalToTree() {
         val dir = treeSubDir(DIR_USERDATA) ?: return
-        listOf("settings.json", "favorites.json", "history.json", "downloads.json").forEach { name ->
+        listOf("settings.json", "favorites.json", "favorite-albums.json", "history.json", "downloads.json").forEach { name ->
             runCatching {
                 val src = File(internalUserDir(), name)
                 if (!src.isFile) return@runCatching
