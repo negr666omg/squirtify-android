@@ -448,7 +448,11 @@ private fun DownloadRow(job: DownloadJob) {
                     job.qualityLabel.ifBlank { job.format.uppercase() },
                     when (job.status) {
                         DownloadStatus.RUNNING ->
-                            "${Fmt.bytes(job.bytes)} / ${if (job.totalBytes > 0) Fmt.bytes(job.totalBytes) else "?"}"
+                            if (job.totalBytes > 0) {
+                                "${(job.progress * 100).toInt()}% · ${Fmt.bytes(job.bytes)} / ${Fmt.bytes(job.totalBytes)}"
+                            } else {
+                                "${Fmt.bytes(job.bytes)} · downloading"
+                            }
                         DownloadStatus.PAUSED -> "paused · ${Fmt.bytes(job.bytes)}"
                         DownloadStatus.DONE -> Fmt.bytes(job.bytes)
                         DownloadStatus.FAILED -> "failed: ${job.error ?: "error"}"
@@ -462,12 +466,20 @@ private fun DownloadRow(job: DownloadJob) {
             )
             if (job.status == DownloadStatus.RUNNING) {
                 Spacer(Modifier.height(4.dp))
-                LinearProgressIndicator(
-                    progress = { job.progress },
-                    modifier = Modifier.fillMaxWidth().height(3.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                )
+                if (job.totalBytes > 0) {
+                    LinearProgressIndicator(
+                        progress = { job.progress },
+                        modifier = Modifier.fillMaxWidth().height(3.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                } else {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth().height(3.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                }
             }
         }
         when (job.status) {
