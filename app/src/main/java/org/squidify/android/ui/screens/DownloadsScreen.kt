@@ -194,32 +194,23 @@ fun DownloadsScreen() {
         contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 140.dp),
     ) {
         item {
-            Surface(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
             ) {
-                Column(Modifier.padding(horizontal = 22.dp, vertical = 20.dp)) {
-                    Text(
-                        text = "OFFLINE LIBRARY",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Text(
-                        text = "Downloads",
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = "${Fmt.bytes(storage)} stored · ${graph.downloads.musicLocationLabel()}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                Text(
+                    text = "Downloads",
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                Text(
+                    text = "${Fmt.bytes(storage)} stored · ${graph.downloads.musicLocationLabel()}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
 
@@ -256,7 +247,6 @@ fun DownloadsScreen() {
             item {
                 SectionRow(
                     "Library · ${groups.size} albums · ${done.size} tracks",
-                    subtitle = "Everything below plays offline from local files",
                 )
             }
             groups.forEachIndexed { gi, group ->
