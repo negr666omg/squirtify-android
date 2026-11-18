@@ -354,17 +354,17 @@ fun SongRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(
+                    if (isCurrent) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.52f)
+                    else Color.Transparent,
+                )
                 .then(
                     if (onLongClick != null) {
                         Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
                     } else {
                         Modifier.clickable(onClick = onClick)
                     },
-                )
-                .clip(RoundedCornerShape(18.dp))
-                .background(
-                    if (isCurrent) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.52f)
-                    else Color.Transparent,
                 )
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
