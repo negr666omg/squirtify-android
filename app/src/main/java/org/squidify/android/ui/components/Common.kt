@@ -85,6 +85,37 @@ fun Modifier.pressScale(
 }
 
 /**
+ * Press animation for the few interactive chips in Now Playing.
+ * Kept off scrolling album cards and track rows to avoid per-item layers.
+ */
+@Composable
+fun Modifier.bouncyClickable(
+    pressedScale: Float = 0.95f,
+    onClick: () -> Unit,
+): Modifier {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) pressedScale else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "bouncyClick",
+    )
+    return this
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        }
+        .clickable(
+            interactionSource = interaction,
+            indication = ripple(),
+            onClick = onClick,
+        )
+}
+
+/**
  * Side-to-side scrolling text (marquee) when the string does not fit —
  * like every major music player does for long titles. Applied per the
  * user's "scrolling titles" setting.
