@@ -21,7 +21,10 @@ class KhiClient(
     }
 
     private val albumCache = ConcurrentHashMap<String, KhiAlbum>()
-    private val resolveCache = ConcurrentHashMap<String, KhiResolve>()
+    private data class CachedResolve(val value: KhiResolve, val fetchedAtMs: Long)
+    private val resolveCache = ConcurrentHashMap<String, CachedResolve>()
+    // Direct file links may be temporary. Do not keep resolver URLs forever.
+    private val resolveTtlMs = 5 * 60 * 1000L
 
     private suspend fun getString(path: String, query: String): String =
         withContext(Dispatchers.IO) {
@@ -54,10 +57,14 @@ class KhiClient(
     }
 
     suspend fun resolve(trackUrl: String): KhiResolve {
-        resolveCache[trackUrl]?.let { return it }
+        val now = System.currentTimeMillis()
+        resolveCache[trackUrl]?.let { cached ->
+            if (now - cached.fetchedAtMs < resolveTtlMs) return cached.value
+            resolveCache.remove(trackUrl, cached)
+        }
         val body = getString("/api/resolve", "url=${enc(trackUrl)}")
         val res = json.decodeFromString(KhiResolve.serializer(), body)
-        resolveCache[trackUrl] = res
+        resolveCache[trackUrl] = CachedResolve(res, System.currentTimeMillis())
         return res
     }
 
