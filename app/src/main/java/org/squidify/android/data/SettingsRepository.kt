@@ -38,6 +38,10 @@ data class Settings(
     val scrollingText: Boolean = false,
     /** Fully close the app (stop playback + exit) when swiped from Recents. */
     val exitOnTaskRemoved: Boolean = false,
+    /** Hide the artist line on Now Playing and show only the album. */
+    val hideNowPlayingArtist: Boolean = true,
+    /** Manual offline mode; automatic network loss is detected separately. */
+    val offlineMode: Boolean = false,
 )
 
 @Serializable
@@ -60,6 +64,8 @@ private data class SettingsState(
     val lyricsProvider: String? = null,
     val scrollingText: Boolean? = null,
     val exitOnTaskRemoved: Boolean? = null,
+    val hideNowPlayingArtist: Boolean? = null,
+    val offlineMode: Boolean? = null,
 )
 
 /**
@@ -130,6 +136,8 @@ class SettingsRepository(
             ?: defaults.lyricsProvider,
         scrollingText = scrollingText ?: defaults.scrollingText,
         exitOnTaskRemoved = exitOnTaskRemoved ?: defaults.exitOnTaskRemoved,
+        hideNowPlayingArtist = hideNowPlayingArtist ?: defaults.hideNowPlayingArtist,
+        offlineMode = offlineMode ?: defaults.offlineMode,
     )
 
     @Synchronized
@@ -167,6 +175,8 @@ class SettingsRepository(
     suspend fun setLyricsProvider(p: LyricsProvider) = mutate { it.copy(lyricsProvider = p.name) }
     suspend fun setScrollingText(b: Boolean) = mutate { it.copy(scrollingText = b) }
     suspend fun setExitOnTaskRemoved(b: Boolean) = mutate { it.copy(exitOnTaskRemoved = b) }
+    suspend fun setHideNowPlayingArtist(b: Boolean) = mutate { it.copy(hideNowPlayingArtist = b) }
+    suspend fun setOfflineMode(b: Boolean) = mutate { it.copy(offlineMode = b) }
 
     // ------------------------------------------------------------ searches
 
