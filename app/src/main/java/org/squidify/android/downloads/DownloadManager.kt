@@ -300,6 +300,7 @@ class DownloadManager(
             title = song.title,
             artist = song.artist,
             album = song.album,
+            albumId = song.albumId,
             coverUrl = subsonic.coverUrl(song.coverArt ?: song.albumId?.let { "al-$it" }, 480),
             requestUrl = url,
             format = ext,
