@@ -89,6 +89,11 @@ fun KhiAlbumScreen(
         }
     }
 
+    LaunchedEffect(albumUrl, album) {
+        val a = album ?: return@LaunchedEffect
+        graph.offlineLibrary.cacheKhi(albumUrl, a, graph.khi.imageUrl(a.coverUrl))
+    }
+
     LaunchedEffect(album, highlightTrackUrl) {
         if (album != null && highlightTrackUrl != null) {
             val index = album!!.tracks.indexOfFirst { it.url == highlightTrackUrl }
@@ -262,8 +267,9 @@ fun KhiAlbumScreen(
                                         onClick = { showDownloadDialog = true },
                                         interactionSource = dlIsr,
                                         modifier = Modifier
-                                            .size(52.dp)
+                                            .size(56.dp)
                                             .pressScale(dlIsr, pressedScale = 0.92f),
+                                        shape = RoundedCornerShape(16.dp),
                                     ) {
                                         Icon(
                                             SqIcons.Download,
