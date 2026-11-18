@@ -63,16 +63,19 @@ internal data class DownloadAlbumKey(
     val albumName: String,
     val artist: String?,
     val source: DownloadSource,
+    val identity: String? = null,
 )
 
 internal fun downloadAlbumKey(
     album: String?,
     artist: String?,
     source: DownloadSource,
+    identity: String? = null,
 ): DownloadAlbumKey = DownloadAlbumKey(
     albumName = album ?: artist ?: "Unknown Album",
     artist = artist,
     source = source,
+    identity = identity,
 )
 
 /**
@@ -130,7 +133,12 @@ fun DownloadsScreen() {
 
     // The library: downloaded albums enriched with a persisted full tracklist.
     val cachedByKey = cachedAlbums.associateBy {
-        downloadAlbumKey(it.albumName, it.artist, it.source)
+        downloadAlbumKey(
+            it.albumName,
+            it.artist,
+            it.source,
+            it.albumUrl,
+        )
     }
 
     data class AlbumGroup(
@@ -144,7 +152,14 @@ fun DownloadsScreen() {
     )
 
     val groups = done
-        .groupBy { downloadAlbumKey(it.album, it.artist, it.source) }
+        .groupBy {
+            downloadAlbumKey(
+                it.album,
+                it.artist,
+                it.source,
+                if (it.source == DownloadSource.KHINSIDER) it.requestUrl.substringBeforeLast('/') else null,
+            )
+        }
         .map { (key, list) ->
             val snapshot = cachedByKey[key]
             AlbumGroup(
