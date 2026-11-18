@@ -438,6 +438,7 @@ class DownloadManager(
         kickService()
     }
 
+    @Synchronized
     fun cancel(id: String) {
         val job = _jobs.value.firstOrNull { it.id == id }
         cancellations += id
@@ -696,13 +697,10 @@ class DownloadManager(
                 val isRange = resp.code == 206
                 var rangeTotal = -1L
                 if (isRange) {
-                    val contentRange = resp.header("Content-Range")
-                    val match = contentRange?.let {
-                        Regex("""^bytes (\d+)-(\d+)/(\d+|\*)$""").matchEntire(it.trim())
-                    }
-                    val rangeStart = match?.groupValues?.get(1)?.toLongOrNull()
-                    val rangeEnd = match?.groupValues?.get(2)?.toLongOrNull()
-                    rangeTotal = match?.groupValues?.get(3)?.toLongOrNull() ?: -1L
+                    val parsedRange = parseHttpContentRange(resp.header("Content-Range"))
+                    val rangeStart = parsedRange?.start
+                    val rangeEnd = parsedRange?.endInclusive
+                    rangeTotal = parsedRange?.total ?: -1L
                     if (rangeStart != startByte || rangeEnd == null || rangeEnd < startByte) {
                         part.delete()
                         throw IOException("Server returned an invalid byte range while resuming")
