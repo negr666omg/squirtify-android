@@ -515,7 +515,9 @@ class PlayerManager(
         }
         _currentIndex.value = queueIdx
         _positionMs.value = 0L
-        _durationMs.value = p.duration.takeIf { it > 0 } ?: currentSong?.durationMs ?: 0L
+        _durationMs.value = currentSong?.durationMs?.takeIf { it > 0 }
+            ?: p.duration.takeIf { it > 0 }
+            ?: 0L
         // the track that just became current is obviously playable — clear any
         // stale full-buffer progress entry left over for it
         currentSong?.let { song ->
@@ -1395,7 +1397,7 @@ class PlayerManager(
         // transcoded streams report no duration — fall back to track metadata
         val dur = currentSong?.durationMs?.takeIf { it > 0 }
             ?: _durationMs.value.takeIf { it > 0 }
-            ?: if (timeOffsetBaseMs == 0L) p.duration.takeIf { it > 0 } else null
+            ?: (if (timeOffsetBaseMs == 0L) p.duration.takeIf { it > 0 } else null)
             ?: return
         val remaining = dur - absolutePositionOf(p)
         if (remaining in 1..ms) {
