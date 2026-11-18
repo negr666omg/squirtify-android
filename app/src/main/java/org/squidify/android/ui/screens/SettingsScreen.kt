@@ -376,7 +376,7 @@ private fun GeneralSettings(
         SettingsCard {
             Column(Modifier.padding(16.dp)) {
                 SettingsCardTitle("About")
-                SettingRow("App", "Squirtify 1.7.3")
+                SettingRow("App", "Squirtify 1.7.4")
                 if (android.os.Build.VERSION.SDK_INT >= 33) {
                     val notifGranted = androidx.core.content.ContextCompat.checkSelfPermission(
                         context, android.Manifest.permission.POST_NOTIFICATIONS,
