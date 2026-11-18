@@ -48,6 +48,26 @@ import org.squidify.android.util.AppLog
 import org.squidify.android.util.Fmt
 
 /**
+ * Stable identity for a downloaded album. Album titles alone are not unique:
+ * different artists (or providers) can publish albums with the same name.
+ */
+internal data class DownloadAlbumKey(
+    val albumName: String,
+    val artist: String?,
+    val source: DownloadSource,
+)
+
+internal fun downloadAlbumKey(
+    album: String?,
+    artist: String?,
+    source: DownloadSource,
+): DownloadAlbumKey = DownloadAlbumKey(
+    albumName = album ?: artist ?: "Unknown Album",
+    artist = artist,
+    source = source,
+)
+
+/**
  * The Downloads tab is an OFFLINE LIBRARY, not a download history:
  * active transfers on top, then every finished album as a row IDENTICAL to
  * the album rows in search results (square cover, title, subtitle) — tapping
@@ -98,6 +118,7 @@ fun DownloadsScreen() {
 
     // The library: finished audio downloads grouped by album
     data class AlbumGroup(
+        val key: DownloadAlbumKey,
         val name: String,
         val coverUrl: String?,
         val artist: String?,
@@ -106,10 +127,11 @@ fun DownloadsScreen() {
     )
 
     val groups = done
-        .groupBy { it.album ?: it.artist ?: "Unknown Album" }
-        .map { (name, list) ->
+        .groupBy { downloadAlbumKey(it.album, it.artist, it.source) }
+        .map { (key, list) ->
             AlbumGroup(
-                name = name,
+                key = key,
+                name = key.albumName,
                 coverUrl = list.firstNotNullOfOrNull { coverFor(it) },
                 artist = list.firstNotNullOfOrNull { it.artist },
                 jobs = list.sortedWith(
@@ -120,7 +142,7 @@ fun DownloadsScreen() {
         }
         .sortedByDescending { g -> g.jobs.maxOf { it.completedAt ?: it.createdAt } }
 
-    var expandedAlbum by remember { mutableStateOf<String?>(null) }
+    var expandedAlbum by remember { mutableStateOf<DownloadAlbumKey?>(null) }
 
     fun playGroup(group: AlbumGroup, startIndex: Int = 0, shuffled: Boolean = false) {
         val songs = group.jobs.map { job ->
@@ -225,14 +247,14 @@ fun DownloadsScreen() {
                         coverUrl = group.coverUrl,
                         trackCount = group.jobs.size,
                         totalBytes = group.totalBytes,
-                        expanded = expandedAlbum == group.name,
+                        expanded = expandedAlbum == group.key,
                         onToggle = {
-                            expandedAlbum = if (expandedAlbum == group.name) null else group.name
+                            expandedAlbum = if (expandedAlbum == group.key) null else group.key
                         },
                         onPlay = { playGroup(group, 0) },
                     )
                 }
-                if (expandedAlbum == group.name) {
+                if (expandedAlbum == group.key) {
                     items(group.jobs.size, key = { groupKeys[it] }) { i ->
                         LibraryTrackRow(
                             job = group.jobs[i],
