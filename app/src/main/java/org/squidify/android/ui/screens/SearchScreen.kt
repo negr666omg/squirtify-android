@@ -210,6 +210,25 @@ fun SearchScreen(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 140.dp),
     ) {
         item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 18.dp, bottom = 2.dp),
+            ) {
+                Text(
+                    text = "DISCOVER",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = "Search",
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+            }
+        }
+        item {
             OutlinedTextField(
                 value = query,
                 onValueChange = {
