@@ -101,6 +101,7 @@ fun SearchScreen(
     fun runSearch(q: String) {
         searchJob?.cancel()
         loadMoreJob?.cancel()
+        khiLoadingMore = false
         khiPage = 1
         khiTotal = null
         val generation = ++searchGeneration
