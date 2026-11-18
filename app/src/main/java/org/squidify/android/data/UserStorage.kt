@@ -39,9 +39,11 @@ internal fun copyStreamAtomically(input: java.io.InputStream, destination: File)
     if (!parent.exists() && !parent.mkdirs()) throw IOException("Cannot create destination directory")
     val temporary = File(parent, "." + destination.name + ".migrating")
     try {
-        temporary.outputStream().buffered().use { output ->
-            input.copyTo(output, 64 * 1024)
-            output.flush()
+        input.use { source ->
+            temporary.outputStream().buffered().use { output ->
+                source.copyTo(output, 64 * 1024)
+                output.flush()
+            }
         }
         try {
             java.nio.file.Files.move(
