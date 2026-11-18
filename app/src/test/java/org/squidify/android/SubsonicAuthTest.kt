@@ -27,7 +27,7 @@ class SubsonicAuthTest {
         val p = c.authParams().toMap()
         assertEquals("Guest", p["u"])
         assertEquals("1.16.1", p["v"])
-        assertEquals("SquidifyNative", p["c"])
+        assertEquals("Squirtify", p["c"])
         assertEquals("json", p["f"])
         val salt = p["s"]!!
         assertEquals(16, salt.length)
