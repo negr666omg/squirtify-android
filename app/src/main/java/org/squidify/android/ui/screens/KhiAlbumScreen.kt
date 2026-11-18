@@ -57,7 +57,7 @@ import org.squidify.android.util.Fmt
 fun KhiAlbumScreen(
     albumUrl: String,
     onBack: () -> Unit,
-    highlightTrackTitle: String? = null,
+    highlightTrackUrl: String? = null,
 ) {
     val graph = App.graph()
     val scope = rememberCoroutineScope()
@@ -85,9 +85,9 @@ fun KhiAlbumScreen(
         }
     }
 
-    LaunchedEffect(album, highlightTrackTitle) {
-        if (album != null && highlightTrackTitle != null) {
-            val index = album!!.tracks.indexOfFirst { it.title == highlightTrackTitle }
+    LaunchedEffect(album, highlightTrackUrl) {
+        if (album != null && highlightTrackUrl != null) {
+            val index = album!!.tracks.indexOfFirst { it.url == highlightTrackUrl }
             if (index >= 0) listState.scrollToItem(index + 1)
         }
     }
@@ -277,11 +277,10 @@ fun KhiAlbumScreen(
                     items(a.tracks.size, key = { "t$it-${a.tracks[it].url}" }) { i ->
                         val t = a.tracks[i]
                         val currentQueueSong = queue.getOrNull(idx)
-                        val isCurrent = currentQueueSong?.title == t.title &&
-                            currentQueueSong?.source == org.squidify.android.data.DownloadSource.KHINSIDER
+                        val isCurrent = currentQueueSong?.id == "khi:${t.url}"
                         // transient navigation highlight — yields to the real
                         // current track instead of staying lit forever
-                        val highlighted = highlightTrackTitle == t.title &&
+                        val highlighted = highlightTrackUrl == t.url &&
                             (currentQueueSong == null || isCurrent)
                         // per-row loading spinner: the tapped track visibly
                         // reacts right where the finger landed
