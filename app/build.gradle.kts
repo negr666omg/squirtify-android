@@ -14,7 +14,7 @@ val keystoreProps = Properties().apply {
 
 android {
     namespace = "org.squidify.android"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "org.squidify.android"
