@@ -327,7 +327,8 @@ class PlayerManager(
         val restoredSongs = songs.toMutableList()
         val current = restoredSongs[index]
         if (current.source == org.squidify.android.data.DownloadSource.KHINSIDER &&
-            !current.khiTrackUrl.isNullOrBlank()
+            !current.khiTrackUrl.isNullOrBlank() &&
+            downloads.downloadedUriForKhi(current.khiTrackUrl) == null
         ) {
             try {
                 // Reuse KhiClient's short-lived resolver cache when possible;
