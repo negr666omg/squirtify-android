@@ -113,7 +113,7 @@ fun HomeScreen(
         item {
             Text(
                 text = "Home",
-                style = MaterialTheme.typography.displaySmall,
+                style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             )
