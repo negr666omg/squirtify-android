@@ -1,5 +1,6 @@
 package org.squidify.android.data
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -51,26 +52,36 @@ class LyricsClient(
                 LyricsProvider.SERVER -> tryServerLyrics(song)
                 LyricsProvider.LRC_RED -> try {
                     searchLrcRed(song.title.trim(), song.artist?.trim().orEmpty(), song.isrc, song.duration?.toDouble())
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (e: Exception) {
                     AppLog.w(TAG, "lrc.red lookup failed: ${e.message}"); null
                 }
                 LyricsProvider.LRCLIB -> try {
                     fetchLrcLib(song.title.trim(), song.artist?.trim().orEmpty(), song.album, song.duration)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (e: Exception) {
                     AppLog.w(TAG, "lrclib.net lookup failed: ${e.message}"); null
                 }
                 LyricsProvider.NETEASE -> try {
                     fetchNetEase(song.title.trim(), song.artist?.trim().orEmpty(), song.duration)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (e: Exception) {
                     AppLog.w(TAG, "NetEase lookup failed: ${e.message}"); null
                 }
                 LyricsProvider.QQ -> try {
                     fetchQq(song.title.trim(), song.artist?.trim().orEmpty(), song.duration)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (e: Exception) {
                     AppLog.w(TAG, "QQ Music lookup failed: ${e.message}"); null
                 }
                 LyricsProvider.OVH -> try {
                     fetchLyricsOvh(song.title.trim(), song.artist?.trim().orEmpty())
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (e: Exception) {
                     AppLog.w(TAG, "lyrics.ovh lookup failed: ${e.message}"); null
                 }
@@ -95,6 +106,8 @@ class LyricsClient(
                 AppLog.i(TAG, "Lyrics found on lrc.red")
                 return lrcRed
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             AppLog.w(TAG, "lrc.red lookup failed: ${e.message}")
         }
@@ -106,6 +119,8 @@ class LyricsClient(
                 AppLog.i(TAG, "Lyrics found on lrclib.net")
                 return lrclib
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             AppLog.w(TAG, "lrclib.net lookup failed: ${e.message}")
         }
@@ -117,6 +132,8 @@ class LyricsClient(
                 AppLog.i(TAG, "Lyrics found on NetEase")
                 return netease
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             AppLog.w(TAG, "NetEase lookup failed: ${e.message}")
         }
@@ -128,6 +145,8 @@ class LyricsClient(
                 AppLog.i(TAG, "Lyrics found on QQ Music")
                 return qq
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             AppLog.w(TAG, "QQ Music lookup failed: ${e.message}")
         }
@@ -139,6 +158,8 @@ class LyricsClient(
                 AppLog.i(TAG, "Lyrics found on lyrics.ovh (plain)")
                 return ovh
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             AppLog.w(TAG, "lyrics.ovh lookup failed: ${e.message}")
         }
@@ -169,6 +190,8 @@ class LyricsClient(
             } else {
                 AppLog.d(TAG, "No structured lyrics on server")
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             AppLog.w(TAG, "Server lyrics lookup failed: ${e.message}")
         }
@@ -212,10 +235,14 @@ class LyricsClient(
                     arr?.mapNotNull {
                         try {
                             json.decodeFromJsonElement(LrcRedHit.serializer(), it)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
                         } catch (_: Exception) {
                             null
                         }
                     } ?: emptyList()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (_: Exception) {
                     emptyList()
                 }
@@ -279,6 +306,8 @@ class LyricsClient(
                         null
                     } else r.body?.string()
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 AppLog.w(TAG, "lrc.red request error: ${e.javaClass.simpleName}: ${e.message}")
                 null
@@ -315,6 +344,8 @@ class LyricsClient(
                 http.newCall(req).execute().use { r ->
                     if (!r.isSuccessful) null else r.body?.string()
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 null
             }
@@ -338,6 +369,8 @@ class LyricsClient(
                     arr?.firstOrNull()?.let { e ->
                         json.decodeFromJsonElement(LrcLibTrack.serializer(), e)
                     }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (_: Exception) {
                     null
                 }
@@ -367,6 +400,8 @@ class LyricsClient(
 
     private fun parseLrcLib(body: String): LrcLibTrack? = try {
         json.decodeFromString(LrcLibTrack.serializer(), body)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
     } catch (_: Exception) {
         null
     }
@@ -413,6 +448,8 @@ class LyricsClient(
             ) ?: return@withContext null
             val lrc = try {
                 (json.parseToJsonElement(lyricBody) as? JsonObject).obj("lrc").str("lyric")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 null
             }
@@ -448,6 +485,8 @@ class LyricsClient(
             ) ?: return@withContext null
             val root = try {
                 json.parseToJsonElement(searchBody.trim().removePrefix("(").removeSuffix(")")) as? JsonObject
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 null
             }
@@ -471,12 +510,16 @@ class LyricsClient(
             val b64 = try {
                 (json.parseToJsonElement(lyricBody.trim().removePrefix("(").removeSuffix(")")) as? JsonObject)
                     .str("lyric")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 null
             }
             if (b64.isNullOrBlank()) return@withContext null
             val lrc = try {
                 String(Base64.getDecoder().decode(b64), Charsets.UTF_8)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 null
             }
@@ -503,6 +546,8 @@ class LyricsClient(
             ) ?: return@withContext null
             val text = try {
                 json.decodeFromString(OvhResult.serializer(), body).lyrics
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 null
             }
@@ -529,6 +574,8 @@ class LyricsClient(
                 http.newCall(builder.build()).execute().use { r ->
                     if (!r.isSuccessful) null else r.body?.string()
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 null
             }
