@@ -17,6 +17,7 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheWriter
+import androidx.media3.datasource.cache.ContentMetadata
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -353,14 +354,12 @@ class PlayerManager(
                 // shrink the seek bar to the tail; a corrupt cache entry
                 // reports a tiny length — adopting it would trigger an
                 // instant "crossfade to the next track" on a healthy song.
-                val expectedTail = if (timeOffsetBaseMs > 0) metaDur - timeOffsetBaseMs else metaDur
-                val consistent = streamDur <= 0 || metaDur <= 0 ||
-                    kotlin.math.abs(streamDur - expectedTail) < 10_000L
-                if (consistent) {
-                    _durationMs.value = streamDur.takeIf { it > 0 } ?: _durationMs.value
-                } else {
-                    _durationMs.value = metaDur.takeIf { it > 0 } ?: _durationMs.value
-                }
+                // Server metadata describes the complete track. A timeOffset
+                // stream is only the tail, so its ExoPlayer duration must never
+                // replace the full duration shown by the seek bar or crossfade.
+                _durationMs.value = metaDur.takeIf { it > 0 }
+                    ?: streamDur.takeIf { it > 0 }
+                    ?: _durationMs.value
                 // Self-heal: the cached stream is dramatically shorter than
                 // the real track (truncated/corrupt cache entry). Evict the
                 // song's cache entries and reload a fresh stream — otherwise
@@ -639,11 +638,15 @@ class PlayerManager(
             return
         }
         _queue.value = _queue.value + songs
+        // Keep the unshuffled baseline complete too, so disabling shuffle
+        // never silently drops tracks added while shuffle was enabled.
+        baseQueue = if (_shuffle.value) baseQueue + songs else _queue.value
         p.addMediaItems(songs.map { buildMediaItem(it) })
         if (cfState == CF_OVERLAP) {
-            // the standby is playing the tail of the same queue; keep it in sync
+            // The standby contains only the suffix starting at cfIncomingIdx.
             standbyP?.addMediaItems(songs.map { buildMediaItem(it) })
         }
+        saveQueue()
     }
 
     fun playNext(songs: List<PlayerSong>) {
@@ -655,6 +658,9 @@ class PlayerManager(
         }
         val at = (_currentIndex.value + 1).coerceAtMost(_queue.value.size)
         _queue.value = _queue.value.toMutableList().apply { addAll(at, songs) }
+        // Preserve every item when shuffle is later disabled. The current
+        // shuffled playback order still receives the new items immediately.
+        baseQueue = if (_shuffle.value) baseQueue + songs else _queue.value
         p.addMediaItems(at, songs.map { buildMediaItem(it) })
         if (cfState == CF_OVERLAP) {
             val standbyAt = (at - cfIncomingIdx).coerceIn(0, standbyP?.mediaItemCount ?: 0)
@@ -708,8 +714,14 @@ class PlayerManager(
         if (index !in _queue.value.indices) return
         if (cfState != CF_NONE) cancelCrossfade()
         val cur = p.currentMediaItemIndex
+        val removedSong = _queue.value[index]
         _queue.value = _queue.value.filterIndexed { i, _ -> i != index }
-        if (!_shuffle.value) baseQueue = _queue.value
+        if (_shuffle.value) {
+            val baseIndex = baseQueue.indexOfFirst { it === removedSong }
+            if (baseIndex >= 0) baseQueue = baseQueue.toMutableList().also { it.removeAt(baseIndex) }
+        } else {
+            baseQueue = _queue.value
+        }
         p.removeMediaItem(index)
         if (index == cur) {
             _currentIndex.value = p.currentMediaItemIndex
@@ -725,7 +737,9 @@ class PlayerManager(
         val item = q.removeAt(from)
         q.add(to, item)
         _queue.value = q
-        if (!_shuffle.value) baseQueue = q
+        // A manual reorder becomes the new baseline so turning shuffle off
+        // does not unexpectedly undo the user's explicit queue arrangement.
+        baseQueue = q
         p.moveMediaItem(from, to)
         _currentIndex.value = p.currentMediaItemIndex
         saveQueue()
@@ -793,22 +807,26 @@ class PlayerManager(
     }
 
     fun seekTo(ms: Long) {
-        val p = positionSource() ?: return
+        // During a crossfade the incoming player is the audible source, while
+        // activeP still points at the outgoing one. Adopt the audible player
+        // before any seek or playlist replacement can occur.
+        if (cfState == CF_OVERLAP) finalizeCrossfadeInterrupted()
+        if (cfState == CF_FADEOUT_ONLY) {
+            crossfadeRampJob?.cancel()
+            crossfadeRampJob = null
+            cfState = CF_NONE
+            activeP?.volume = 1f
+        }
+        val p = activeP ?: return
         val song = currentSong
-        val dur = _durationMs.value.takeIf { it > 0 } ?: p.duration.takeIf { it > 0 } ?: 0L
+        val dur = song?.durationMs?.takeIf { it > 0 }
+            ?: _durationMs.value.takeIf { it > 0 }
+            ?: p.duration.takeIf { it > 0 }
+            ?: 0L
         val pos = if (dur > 0) ms.coerceIn(0L, dur) else ms.coerceAtLeast(0)
 
-        // ---- FAST-TAP GUARD -------------------------------------------------
-        // The UI is optimistic from the instant a track is tapped, but the
-        // player may still hold the PREVIOUS playlist (KHInsider URLs are
-        // resolving, a full-buffer prefetch is running, or the swap simply
-        // hasn't been dispatched yet) or be mid-prepare on the new one.
-        // Mutating the playlist in that window raced the pending
-        // setMediaItems()/prepare(): the UI jumped back to the album's first
-        // track, audio stalled, and the MediaSession occasionally crashed
-        // building its PlayerInfo snapshot (IllegalStateException:
-        // mediaItemIndex >= timeline windowCount). Park the seek instead and
-        // replay it the moment the intended track is actually READY.
+        // A tap can arrive while a newly selected track is still resolving or
+        // preparing. Never edit the old playlist during that transition.
         if (
             song == null || p.mediaItemCount == 0 ||
             p.currentMediaItem?.mediaId != song.id ||
@@ -822,45 +840,30 @@ class PlayerManager(
                 "Seek parked at ${pos}ms — '${song.title}' is not READY yet " +
                     "(state=${stateName(p.playbackState)}, hasItem=${p.currentMediaItem?.mediaId ?: "-"}, want=${song.id})",
             )
-            // the bar follows the finger immediately; audio follows on READY
             _positionMs.value = pos
             return
         }
 
-        if (cfState == CF_FADEOUT_ONLY) {
-            // a seek invalidates the tail fade; snap back to full volume
-            crossfadeRampJob?.cancel()
-            crossfadeRampJob = null
-            cfState = CF_NONE
-            p.volume = 1f
-        }
         val transcodedStream = song.source == org.squidify.android.data.DownloadSource.SQUIDIFY &&
             settings.state().value.streamingQuality != StreamQuality.ORIGINAL &&
             downloads.downloadedUriFor(song.id) == null
-        // Native seeks are only safe when the stream REALLY covers the whole
-        // (absolute) track: a seekable-but-offset stream only contains the
-        // tail, and its player duration is the TAIL length, not the track's —
-        // seeking natively into it lands at wrong positions (the opus/mp3
-        // "can't seek" bug: the bar snapped back or jumped wild).
         val metaDur = song.durationMs
         val nativeDur = p.duration.takeIf { it > 0 } ?: 0L
-        val durationTrustworthy = nativeDur <= 0 || metaDur <= 0 ||
-            kotlin.math.abs(timeOffsetBaseMs + nativeDur - metaDur) < 10_000L
+        val durationTrustworthy = timeOffsetBaseMs == 0L &&
+            (nativeDur <= 0 || metaDur <= 0 || kotlin.math.abs(nativeDur - metaDur) < 10_000L)
         val seekable = p.isCurrentMediaItemSeekable
         AppLog.i(
             TAG,
             "Seek → ${pos}ms (native-seekable=$seekable, durationOk=$durationTrustworthy, timeOffsetBase=$timeOffsetBaseMs) — '${song.title}'",
         )
-        if (seekable && durationTrustworthy && pos >= timeOffsetBaseMs) {
-            // native seek (range-supporting streams, local files, fully cached)
-            p.seekTo((pos - timeOffsetBaseMs).coerceAtLeast(0))
+        if (seekable && durationTrustworthy) {
+            p.seekTo(pos)
             _positionMs.value = pos
         } else if (transcodedStream) {
-            // transcoded streams are not range-seekable — restart them at a
-            // server-side time offset instead
             seekViaTimeOffset(song, pos)
         } else {
-            // local/KHI files should always be seekable; last-resort fallback
+            // Local downloads and KHInsider direct files should normally be
+            // seekable. Retain the fallback for servers that misreport this.
             p.seekTo(pos)
             _positionMs.value = pos
         }
@@ -1094,7 +1097,12 @@ class PlayerManager(
         if (_queue.value.isEmpty()) return
         if (cfState != CF_NONE) cancelCrossfade()
         val idx = p.currentMediaItemIndex
+        if (idx !in _queue.value.indices) return
         val curSong = _queue.value.getOrNull(idx)
+        if (p.currentMediaItem?.mediaId != curSong?.id) {
+            AppLog.w(TAG, "Quality change skipped: player timeline is not aligned with the app queue")
+            return
+        }
         if (curSong?.source == org.squidify.android.data.DownloadSource.KHINSIDER) {
             // refresh every Squidify item URL without touching the playing one
             var refreshed = 0
@@ -1124,10 +1132,14 @@ class PlayerManager(
             if (i == idx && transcoded) buildMediaItem(s, timeOffsetMs = pos) else buildMediaItem(s)
         }
         timeOffsetBaseMs = if (transcoded) (pos / 1000L) * 1000L else 0L
+        // setMediaItems emits PLAYLIST_CHANGED for the current item. Mark it
+        // before the call so onTrackChanged cannot reset the offset base to 0.
+        selfReplacedMediaId = curSong?.id
         p.setMediaItems(items, idx, if (transcoded) 0L else pos)
         p.prepare()
         p.playWhenReady = playing
         _positionMs.value = pos
+        _durationMs.value = curSong?.durationMs?.takeIf { it > 0 } ?: _durationMs.value
         _stalled.value = false
     }
 
@@ -1260,12 +1272,12 @@ class PlayerManager(
             return false
         }
         val key = playbackUri(song)?.second ?: return false
-        val len = try {
-            cache.getCachedBytes(key, 0, Long.MAX_VALUE)
+        return try {
+            val contentLength = ContentMetadata.getContentLength(cache.getContentMetadata(key))
+            contentLength > 0L && cache.isCached(key, 0L, contentLength)
         } catch (_: Exception) {
-            return false
+            false
         }
-        return len > 0
     }
 
     /**
@@ -1298,6 +1310,10 @@ class PlayerManager(
      * disk cache in the background without any visible loading indicators.
      */
     private fun maybePrefetchNext() {
+        // Do not silently download entire following tracks on mobile data.
+        // This background full-file prefetch follows the explicit Full-buffer
+        // preference; normal streaming remains demand-driven by ExoPlayer.
+        if (!settings.state().value.fullBuffer) return
         if (nextPrefetched) return
         if (cfState != CF_NONE) return
         val song = nextIndexAfter(_currentIndex.value)?.let { _queue.value.getOrNull(it) } ?: return
@@ -1377,7 +1393,10 @@ class PlayerManager(
         if (repeatOne && !settings.state().value.crossfadeRepeatLoops) return
         if (!p.playWhenReady || p.playbackState != Player.STATE_READY) return
         // transcoded streams report no duration — fall back to track metadata
-        val dur = p.duration.takeIf { it > 0 } ?: _durationMs.value.takeIf { it > 0 } ?: return
+        val dur = currentSong?.durationMs?.takeIf { it > 0 }
+            ?: _durationMs.value.takeIf { it > 0 }
+            ?: if (timeOffsetBaseMs == 0L) p.duration.takeIf { it > 0 } else null
+            ?: return
         val remaining = dur - absolutePositionOf(p)
         if (remaining in 1..ms) {
             beginCrossfade(remaining)
@@ -1436,6 +1455,8 @@ class PlayerManager(
 
         // UI and notification follow the incoming track from the moment it starts
         _currentIndex.value = nextIdx
+        _positionMs.value = 0L
+        _durationMs.value = incoming.durationMs
         scrobbledCurrent = false
         nextPrefetched = false
         history.record(incoming)
@@ -1493,6 +1514,8 @@ class PlayerManager(
         standbyP = oldActive
         swapListeners(oldActive, standby)
         _currentIndex.value = standby.currentMediaItemIndex
+        _positionMs.value = timeOffsetBaseMs + standby.currentPosition
+        _durationMs.value = currentSong?.durationMs ?: standby.duration.coerceAtLeast(0L)
         cfState = CF_NONE
         cfIncomingIdx = -1
         cfOutgoingIdx = -1
@@ -1527,6 +1550,8 @@ class PlayerManager(
         standbyP = oldActive
         swapListeners(oldActive, standby)
         _currentIndex.value = standby.currentMediaItemIndex
+        _positionMs.value = timeOffsetBaseMs + standby.currentPosition
+        _durationMs.value = currentSong?.durationMs ?: standby.duration.coerceAtLeast(0L)
         cfState = CF_NONE
         cfIncomingIdx = -1
         cfOutgoingIdx = -1
@@ -1618,8 +1643,10 @@ class PlayerManager(
                 val src = positionSource()
                 if (src != null) {
                     _positionMs.value = absolutePositionOf(src)
-                    val dur = src.duration
-                    if (dur > 0) _durationMs.value = dur
+                    val metadataDuration = currentSong?.durationMs?.takeIf { it > 0 }
+                    val streamDuration = if (timeOffsetBaseMs == 0L) src.duration.takeIf { it > 0 } else null
+                    val dur = metadataDuration ?: streamDuration
+                    if (dur != null) _durationMs.value = dur
                     maybeScrobble(src)
                     maybeCrossfadeTick()
                     maybePrefetchNext()
