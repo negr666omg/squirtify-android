@@ -106,7 +106,7 @@ fun SettingsScreen() {
         // ---------- header with tabs
         Text(
             text = "Settings",
-            style = MaterialTheme.typography.displaySmall,
+            style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         )
