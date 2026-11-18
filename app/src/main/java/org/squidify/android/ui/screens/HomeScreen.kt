@@ -77,6 +77,8 @@ fun HomeScreen(
             frequent = results[2]
             newest = results[3]
             explore = results[4]
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             error = e.message ?: "Connection failed"
         }
