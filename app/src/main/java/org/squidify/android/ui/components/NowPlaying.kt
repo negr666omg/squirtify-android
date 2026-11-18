@@ -5,6 +5,8 @@ package org.squidify.android.ui.components
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -264,6 +266,7 @@ fun NowPlayingScreen(
                     isHearted = isHearted,
                     downloadStatus = downloadStatus,
                     scrollingText = settings.scrollingText,
+                    hideArtist = settings.hideNowPlayingArtist,
                     onTogglePlay = { player.togglePlayPause() },
                     onPrevious = { player.previous() },
                     onNext = { player.next() },
@@ -429,6 +432,7 @@ private fun PlayingTab(
     isHearted: Boolean,
     downloadStatus: DownloadStatus?,
     scrollingText: Boolean,
+    hideArtist: Boolean,
     onTogglePlay: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
@@ -450,6 +454,14 @@ private fun PlayingTab(
     val playIsr = remember { MutableInteractionSource() }
     val prevIsr = remember { MutableInteractionSource() }
     val nextIsr = remember { MutableInteractionSource() }
+    val playCorner by animateDpAsState(
+        targetValue = if (isPlaying) 20.dp else 36.dp,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "playButtonShape",
+    )
 
     // Soft breathing dim while the track is still loading — the cover gently
     // darkens and brightens so buffering is obvious without a harsh overlay.
@@ -522,38 +534,55 @@ private fun PlayingTab(
                 .clip(RoundedCornerShape(8.dp))
                 .clickable(onClick = onTitleTap),
         )
-        Row(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = current.artist ?: "",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .weight(1f, fill = false)
-                    .marqueeIf(scrollingText)
-                    .clip(RoundedCornerShape(6.dp))
-                    .clickable(onClick = onArtistTap),
-            )
-            current.album?.let { alb ->
+        if (hideArtist) {
+            current.album?.let { album ->
                 Text(
-                    text = " — ",
+                    text = album,
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .marqueeIf(scrollingText)
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable(onClick = onAlbumTap),
                 )
+            }
+        } else {
+            Row(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = alb,
+                    text = current.artist ?: "",
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
                         .weight(1f, fill = false)
                         .marqueeIf(scrollingText)
                         .clip(RoundedCornerShape(6.dp))
-                        .clickable(onClick = onAlbumTap),
+                        .clickable(onClick = onArtistTap),
                 )
+                current.album?.let { album ->
+                    Text(
+                        text = " — ",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                    Text(
+                        text = album,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .marqueeIf(scrollingText)
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable(onClick = onAlbumTap),
+                    )
+                }
             }
         }
 
@@ -659,7 +688,7 @@ private fun PlayingTab(
                 modifier = Modifier
                     .size(72.dp)
                     .pressScale(playIsr, pressedScale = 0.90f)
-                    .clip(CircleShape)
+                    .clip(RoundedCornerShape(playCorner))
                     .background(MaterialTheme.colorScheme.primary)
                     .clickable(interactionSource = playIsr, indication = androidx.compose.material3.ripple(), onClick = onTogglePlay),
                 contentAlignment = Alignment.Center,
@@ -889,19 +918,6 @@ fun QualityInfoSheet(
             // ---------------- source, always first
             QualitySection(title = "Source") {
                 InfoRow("Provider", if (isSquidify) "Squidify" else "KHInsider")
-                if (isSquidify) {
-                    InfoRow("Server", "squidify.org (Navidrome)")
-                } else {
-                    InfoRow("Server", "khinsider.squid.wtf")
-                    Text(
-                        text = "A community API wrapper around downloads.khinsider.com built by " +
-                            "the squid.wtf team — it only exposes nicer endpoints; the actual audio " +
-                            "files always come from downloads.khinsider.com.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 2.dp),
-                    )
-                }
                 if (downloadStatus == DownloadStatus.DONE && isSquidify) {
                     InfoRow("Mode", "Local download — no network used")
                 } else if (downloadStatus == DownloadStatus.DONE) {
@@ -972,8 +988,7 @@ fun QualityInfoSheet(
                             )
                             InfoRow("Data usage", "≈ ${Fmt.bytes(((q.maxBitRate ?: 0) * 1000L / 8) * 60)} / min")
                         }
-                        InfoRow("Phone converts", "never — audio always comes ready from the server")
-                        InfoRow("Cached", "yes — replaying costs no data until evicted")
+                        InfoRow("Cached", "yes")
                     }
                 }
             } else {
