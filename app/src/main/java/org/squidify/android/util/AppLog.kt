@@ -47,10 +47,10 @@ object AppLog {
     private const val MAX_FILE_BYTES = 512L * 1024L
 
     private val sensitiveQueryParameter = Regex(
-        """(?i)([?&](?:u|t|s|p|token|password|pass|auth|authorization|signature|sig|api[_-]?key|key)=)[^&#\\s]+""",
+        """(?i)([?&](?:u|t|s|p|token|password|pass|auth|authorization|signature|sig|api[_-]?key|key)=)[^&#\s]+""",
     )
-    private val bearerToken = Regex("""(?i)(Bearer\\s+)[A-Za-z0-9._~+/-]+=*""")
-    private val urlCredentials = Regex("""(?i)(https?://)[^/@\\s:]+:[^/@\\s]+@""")
+    private val bearerToken = Regex("""(?i)(Bearer\s+)[A-Za-z0-9._~+/-]+=*""")
+    private val urlCredentials = Regex("""(?i)(https?://)[^/@\s:]+:[^/@\s]+@""")
 
     /** Keep diagnostics useful without persisting reusable auth or signed URL secrets. */
     internal fun redactSensitiveValues(value: String): String =
