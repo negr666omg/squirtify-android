@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
 import org.squidify.android.data.DownloadSource
+import org.squidify.android.data.DownloadJob
 
 class DownloadsAlbumKeyTest {
 
@@ -42,4 +43,64 @@ class DownloadsAlbumKeyTest {
             downloadAlbumKey(null, null, DownloadSource.SQUIDIFY).albumName,
         )
     }
+    @Test
+    fun `same Subsonic album groups tracks with different performers`() {
+        val first = downloadJobAlbumKey(
+            DownloadJob(
+                id = "one",
+                source = DownloadSource.SQUIDIFY,
+                title = "Track One",
+                artist = "Performer A",
+                album = "Soundtrack",
+                albumId = "album-42",
+                requestUrl = "https://example.test/one",
+                format = "flac",
+                fileName = "01 - Track One.flac",
+            ),
+        )
+        val second = downloadJobAlbumKey(
+            DownloadJob(
+                id = "two",
+                source = DownloadSource.SQUIDIFY,
+                title = "Track Two",
+                artist = "Performer B",
+                album = "Soundtrack",
+                albumId = "album-42",
+                requestUrl = "https://example.test/two",
+                format = "flac",
+                fileName = "02 - Track Two.flac",
+            ),
+        )
+
+        assertEquals(first, second)
+    }
+
+    @Test
+    fun `same named KHInsider albums remain separate by page URL`() {
+        val first = downloadJobAlbumKey(
+            DownloadJob(
+                id = "one",
+                source = DownloadSource.KHINSIDER,
+                title = "Track",
+                album = "Soundtrack",
+                requestUrl = "https://kh.example/game-one/track",
+                format = "mp3",
+                fileName = "Track.mp3",
+            ),
+        )
+        val second = downloadJobAlbumKey(
+            DownloadJob(
+                id = "two",
+                source = DownloadSource.KHINSIDER,
+                title = "Track",
+                album = "Soundtrack",
+                requestUrl = "https://kh.example/game-two/track",
+                format = "mp3",
+                fileName = "Track.mp3",
+            ),
+        )
+
+        assertNotEquals(first, second)
+    }
+
 }
