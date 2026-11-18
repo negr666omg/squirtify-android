@@ -56,11 +56,13 @@ class KhiClient(
         return album
     }
 
-    suspend fun resolve(trackUrl: String): KhiResolve {
+    suspend fun resolve(trackUrl: String, forceRefresh: Boolean = false): KhiResolve {
         val now = System.currentTimeMillis()
-        resolveCache[trackUrl]?.let { cached ->
-            if (now - cached.fetchedAtMs < resolveTtlMs) return cached.value
-            resolveCache.remove(trackUrl, cached)
+        if (!forceRefresh) {
+            resolveCache[trackUrl]?.let { cached ->
+                if (now - cached.fetchedAtMs < resolveTtlMs) return cached.value
+                resolveCache.remove(trackUrl, cached)
+            }
         }
         val body = getString("/api/resolve", "url=${enc(trackUrl)}")
         val res = json.decodeFromString(KhiResolve.serializer(), body)
