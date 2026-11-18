@@ -73,10 +73,18 @@ internal fun downloadAlbumKey(
     identity: String? = null,
 ): DownloadAlbumKey = DownloadAlbumKey(
     albumName = album ?: artist ?: "Unknown Album",
-    artist = artist,
+    artist = if (identity == null) artist else null,
     source = source,
     identity = identity,
 )
+
+internal fun downloadJobAlbumKey(job: DownloadJob, resolvedAlbumId: String? = job.albumId): DownloadAlbumKey {
+    val identity = when (job.source) {
+        DownloadSource.SQUIDIFY -> resolvedAlbumId
+        DownloadSource.KHINSIDER -> job.requestUrl.substringBeforeLast('/')
+    }
+    return downloadAlbumKey(job.album, job.artist, job.source, identity)
+}
 
 /**
  * The Downloads tab is an OFFLINE LIBRARY, not a download history:
@@ -114,14 +122,15 @@ fun DownloadsScreen() {
     // persisted job — recover the art id from the local listening history or
     // favourites (both store coverArtId/albumId per song id).
     fun metaFor(job: DownloadJob): Pair<String?, String?> {
-        if (job.coverUrl != null) return null to null // url already baked in
         if (job.source != DownloadSource.SQUIDIFY) return null to null
-        val id = job.songId ?: return null to null
+        val id = job.songId ?: return null to job.albumId
         val h: HistoryEntry? = historyEntries.firstOrNull { it.songId == id }
         val f: FavSong? = favSongs.firstOrNull { it.id == id }
-        val coverArtId = h?.coverArtId ?: f?.coverArtId
-            ?: h?.albumId?.let { "al-$it" } ?: f?.albumId?.let { "al-$it" }
-        val albumId = h?.albumId ?: f?.albumId
+        val coverArtId = if (job.coverUrl != null) null else {
+            h?.coverArtId ?: f?.coverArtId
+                ?: h?.albumId?.let { "al-$it" } ?: f?.albumId?.let { "al-$it" }
+        }
+        val albumId = job.albumId ?: h?.albumId ?: f?.albumId
         return coverArtId to albumId
     }
 
@@ -137,7 +146,7 @@ fun DownloadsScreen() {
             it.albumName,
             it.artist,
             it.source,
-            it.albumUrl,
+            if (it.source == DownloadSource.SQUIDIFY) it.albumId else it.albumUrl,
         )
     }
 
@@ -152,21 +161,14 @@ fun DownloadsScreen() {
     )
 
     val groups = done
-        .groupBy {
-            downloadAlbumKey(
-                it.album,
-                it.artist,
-                it.source,
-                if (it.source == DownloadSource.KHINSIDER) it.requestUrl.substringBeforeLast('/') else null,
-            )
-        }
+        .groupBy { job -> downloadJobAlbumKey(job, metaFor(job).second) }
         .map { (key, list) ->
             val snapshot = cachedByKey[key]
             AlbumGroup(
                 key = key,
                 name = key.albumName,
                 coverUrl = snapshot?.coverUrl ?: list.firstNotNullOfOrNull { coverFor(it) },
-                artist = list.firstNotNullOfOrNull { it.artist } ?: snapshot?.artist,
+                artist = snapshot?.artist ?: list.firstNotNullOfOrNull { it.artist },
                 jobs = list.sortedWith(
                     compareBy({ trackNumberFromFileName(it.fileName) }, { it.title }),
                 ),
