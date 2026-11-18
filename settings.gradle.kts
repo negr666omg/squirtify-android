@@ -18,5 +18,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "SquidifyNative"
+rootProject.name = "Squirtify"
 include(":app")
