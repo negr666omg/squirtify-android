@@ -139,7 +139,7 @@ object AppLog {
         }
     }
 
-    private fun parseLine(raw: String): Entry? {
+    internal fun parseLine(raw: String): Entry? {
         // MM-dd HH:mm:ss.SSS L/ TAG: message
         if (raw.length < 24) return null
         val levelCh = raw.getOrNull(19)
