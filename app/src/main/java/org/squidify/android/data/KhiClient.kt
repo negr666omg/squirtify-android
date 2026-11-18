@@ -7,6 +7,7 @@ import kotlinx.serialization.json.jsonObject
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.squidify.android.util.AppLog
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.ConcurrentHashMap
 
 /** Client for the khinsider.squid.wtf (KHI-DL) companion API. */
@@ -20,6 +21,14 @@ class KhiClient(
         coerceInputValues = true
     }
 
+    // Resolver responses are small JSON documents. Bound the total request
+    // time so a blocked VPN route cannot leave playback waiting indefinitely.
+    private val apiHttp = http.newBuilder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .callTimeout(20, TimeUnit.SECONDS)
+        .build()
+
     private val albumCache = ConcurrentHashMap<String, KhiAlbum>()
     private data class CachedResolve(val value: KhiResolve, val fetchedAtMs: Long)
     private val resolveCache = ConcurrentHashMap<String, CachedResolve>()
@@ -32,7 +41,7 @@ class KhiClient(
                 .url("$baseUrl$path?$query")
                 .header("Accept", "application/json")
                 .build()
-            http.newCall(req).execute().use { r ->
+            apiHttp.newCall(req).execute().use { r ->
                 if (!r.isSuccessful) {
                     AppLog.e("KHI", "$path → HTTP ${r.code}")
                     throw IllegalStateException("HTTP ${r.code}")
