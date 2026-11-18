@@ -166,6 +166,7 @@ fun AppNavHost(onExitApp: () -> Unit) {
 
     Box(Modifier.fillMaxSize()) {
         Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
             bottomBar = {
                 Column {
                     if (current != null) {
@@ -179,7 +180,10 @@ fun AppNavHost(onExitApp: () -> Unit) {
                             Modifier.padding(bottom = 4.dp),
                         )
                     }
-                    NavigationBar {
+                    NavigationBar(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        tonalElevation = 0.dp,
+                    ) {
                         destinations.forEach { dest ->
                             NavigationBarItem(
                                 selected = currentRoute == dest.route,
