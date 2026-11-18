@@ -358,8 +358,8 @@ fun SongRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                // Draw a highlight only for the active item. Idle rows stay
-                // on the simplest possible draw path while the list is scrolling.
+                .padding(horizontal = if (isCurrent) 12.dp else 0.dp)
+                // Keep the selected track capsule aligned with the mini-player edges.
                 .then(
                     if (isCurrent) Modifier.background(
                         MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.52f),
