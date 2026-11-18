@@ -12,6 +12,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -134,16 +135,7 @@ fun NowPlayingScreen(
                 }
                 .background(MaterialTheme.colorScheme.background)
                 .pointerInput(Unit) { detectTapGestures { } }
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures(
-                        onVerticalDrag = { change, dragAmount ->
-                            change.consume()
-                            sheet.dragDelta(dragAmount, size.height.toFloat())
-                        },
-                        onDragEnd = { sheet.dragEnd() },
-                        onDragCancel = { sheet.dragEnd() },
-                    )
-                },
+                .dragToDismiss(sheet),
         )
         return
     }
@@ -192,16 +184,7 @@ fun NowPlayingScreen(
             .pointerInput(Unit) {
                 detectTapGestures { }
             }
-            .pointerInput(Unit) {
-                detectVerticalDragGestures(
-                    onVerticalDrag = { change, dragAmount ->
-                        change.consume()
-                        sheet.dragDelta(dragAmount, size.height.toFloat())
-                    },
-                    onDragEnd = { sheet.dragEnd() },
-                    onDragCancel = { sheet.dragEnd() },
-                )
-            },
+            .dragToDismiss(sheet),
     ) {
         Column(
             modifier = Modifier
@@ -334,6 +317,25 @@ fun NowPlayingScreen(
             onDismiss = { showCoverViewer = false },
         )
     }
+}
+
+private fun Modifier.dragToDismiss(sheet: SheetController): Modifier = pointerInput(sheet) {
+    val velocityTracker = VelocityTracker()
+    detectVerticalDragGestures(
+        onDragStart = { offset ->
+            velocityTracker.resetTracking()
+            velocityTracker.addPosition(android.os.SystemClock.uptimeMillis(), offset)
+        },
+        onVerticalDrag = { change, dragAmount ->
+            velocityTracker.addPosition(change.uptimeMillis, change.position)
+            change.consume()
+            sheet.dragDelta(dragAmount, size.height.toFloat())
+        },
+        onDragEnd = {
+            sheet.dragEnd(velocityTracker.calculateVelocity().y, size.height.toFloat())
+        },
+        onDragCancel = { sheet.dragEnd() },
+    )
 }
 
 /** Compact selector for the default lyrics provider, shown on the Lyrics tab. */
@@ -505,16 +507,7 @@ private fun PlayingTab(
             }
         }
 
-        Spacer(Modifier.height(12.dp))
-
-        Text(
-            text = "NOW PLAYING",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 4.dp),
-        )
+        Spacer(Modifier.height(16.dp))
 
         Text(
             text = current.title,
