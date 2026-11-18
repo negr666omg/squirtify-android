@@ -22,7 +22,6 @@ import org.squidify.android.data.DownloadSource
 import org.squidify.android.data.DownloadStatus
 import org.squidify.android.data.KhiAlbum
 import org.squidify.android.data.KhiClient
-import org.squidify.android.data.KhiQuality
 import org.squidify.android.data.SettingsRepository
 import org.squidify.android.data.Song
 import org.squidify.android.data.StreamQuality
@@ -59,6 +58,10 @@ class DownloadManager(
 
     private val activeCalls = ConcurrentHashMap<String, okhttp3.Call>()
     private val cancellations = ConcurrentHashMap.newKeySet<String>()
+    // IDs are reserved atomically before a worker starts I/O.
+    private val activeJobs = ConcurrentHashMap.newKeySet<String>()
+    // Defer a resume requested while the cancelled worker is closing .part.
+    private val resumeAfterPause = ConcurrentHashMap.newKeySet<String>()
     private var workersStarted = false
     private val semaphore = Semaphore(2)
 
@@ -375,17 +378,26 @@ class DownloadManager(
 
     fun pause(id: String) {
         val job = _jobs.value.firstOrNull { it.id == id } ?: return
-        AppLog.i(TAG, "Paused: '${job.title}' at ${FmtSafe.bytes(job.bytes)}")
-        cancellations += id
-        activeCalls[id]?.cancel()
-        update(id) { it.copy(status = DownloadStatus.PAUSED) }
+        if (job.status != DownloadStatus.QUEUED && job.status != DownloadStatus.RUNNING) return
+        AppLog.i(TAG, "Pausing: '${job.title}' at ${FmtSafe.bytes(job.bytes)}")
+        if (job.status == DownloadStatus.RUNNING && activeJobs.contains(id)) {
+            cancellations += id
+            activeCalls[id]?.cancel()
+        }
+        update(id) { it.copy(status = DownloadStatus.PAUSED, error = null) }
     }
 
     fun resume(id: String) {
         val job = _jobs.value.firstOrNull { it.id == id } ?: return
-        AppLog.i(TAG, "Resumed: '${job.title}'")
+        if (job.status != DownloadStatus.PAUSED) return
+        AppLog.i(TAG, "Resume requested: '${job.title}'")
+        if (activeJobs.contains(id)) {
+            // Let the old worker unwind before this job becomes QUEUED again.
+            resumeAfterPause += id
+            return
+        }
+        cancellations.remove(id)
         update(id) { it.copy(status = DownloadStatus.QUEUED, error = null) }
-        start()
         kickService()
     }
 
@@ -569,35 +581,59 @@ class DownloadManager(
         }
     }
 
+    @Synchronized
     private fun pickNext(): DownloadJob? {
-        return _jobs.value.firstOrNull { it.status == DownloadStatus.QUEUED }
+        val next = _jobs.value.firstOrNull { it.status == DownloadStatus.QUEUED } ?: return null
+        // Reserve before returning; a second worker cannot select the same job.
+        _jobs.value = _jobs.value.map {
+            if (it.id == next.id) it.copy(status = DownloadStatus.RUNNING, error = null) else it
+        }
+        activeJobs += next.id
+        persist()
+        return next.copy(status = DownloadStatus.RUNNING, error = null)
     }
 
     private suspend fun runJob(job: DownloadJob) {
         val id = job.id
-        update(id) { it.copy(status = DownloadStatus.RUNNING, error = null) }
         AppLog.i(TAG, "Starting: '${job.title}' [${job.qualityLabel}]")
         val part = File(stagingDir(), job.fileName + ".part")
         try {
+            if (cancellations.contains(id)) throw kotlinx.coroutines.CancellationException("paused before start")
             // resolve KHInsider track page -> direct file URL (audio only)
             var url = job.fileUrl
             if (url == null && job.source == DownloadSource.KHINSIDER && job.kind == "audio") {
                 AppLog.d(TAG, "Resolving KHInsider track page → direct URL…")
                 val res = khi.resolve(job.requestUrl)
-                val format = when (settings.state().value.khiQuality) {
-                    KhiQuality.FLAC -> "flac"
-                    KhiQuality.MP3 -> "mp3"
-                    KhiQuality.BEST -> if (job.format == "flac") "flac" else "mp3"
+                // Preserve the format selected when this job was queued.
+                // A later global quality change must not change the downloaded
+                // bytes while leaving the old extension and MIME type behind.
+                val requestedFormat = job.format.lowercase()
+                val exactUrl = when (requestedFormat) {
+                    "flac" -> res.flac
+                    "mp3" -> res.mp3
+                    else -> null
                 }
-                url = res.urlFor(format) ?: res.urlFor("mp3") ?: res.urlFor("flac") ?: res.directUrl
+                url = exactUrl ?: res.directUrl
                 if (url == null) {
-                    AppLog.e(TAG, "KHInsider resolve gave no direct URL for '${job.title}' (page: ${job.requestUrl})")
-                    throw IOException("Could not resolve track URL")
+                    AppLog.e(TAG, "KHInsider resolve has no $requestedFormat URL for '${job.title}'")
+                    throw IOException("Requested $requestedFormat is unavailable for this track")
+                }
+                val pathFormat = url.substringBefore('?').substringAfterLast('.', "").lowercase()
+                val reportedType = res.type?.lowercase().orEmpty()
+                val actualFormat = when {
+                    pathFormat in setOf("flac", "mp3") -> pathFormat
+                    "flac" in reportedType -> "flac"
+                    "mp3" in reportedType -> "mp3"
+                    else -> null
+                }
+                if (actualFormat != null && actualFormat != requestedFormat) {
+                    throw IOException("Requested $requestedFormat, but the resolver returned $actualFormat")
                 }
                 AppLog.d(TAG, "Resolved to: $url")
                 update(id) { it.copy(fileUrl = url) }
             }
             if (url == null) url = job.requestUrl
+            if (cancellations.contains(id)) throw kotlinx.coroutines.CancellationException("paused before network request")
 
             var startByte = if (part.exists()) part.length() else 0L
             if (startByte > 0) AppLog.d(TAG, "Resuming '${job.title}' from byte $startByte")
@@ -609,6 +645,7 @@ class DownloadManager(
                 .build()
                 .newCall(rb.build())
             activeCalls[id] = call
+            if (cancellations.contains(id)) throw kotlinx.coroutines.CancellationException("paused before network request")
 
             call.execute().use { resp ->
                 if (!resp.isSuccessful) {
@@ -661,11 +698,14 @@ class DownloadManager(
                     try { output.close() } catch (_: Exception) {}
                 }
 
+                if (cancellations.contains(id)) throw kotlinx.coroutines.CancellationException("paused after transfer")
+
                 // Embed the album cover into single track files
                 if (job.kind == "audio") {
                     embedCoverArt(job, part)
                 }
 
+                if (cancellations.contains(id)) throw kotlinx.coroutines.CancellationException("paused before publishing")
                 val finalSize = part.length()
                 val finalUri = publishToMusic(job, part)
                 part.delete()
@@ -682,18 +722,39 @@ class DownloadManager(
                 AppLog.i(TAG, "Completed: '${job.title}' — ${FmtSafe.bytes(finalSize)} → $where")
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
+            update(id) { it.copy(status = DownloadStatus.PAUSED, bytes = part.length(), error = null) }
             AppLog.i(TAG, "Paused: '${job.title}' — ${FmtSafe.bytes(part.length())} kept for resume")
-        } catch (e: Throwable) {
-            // Throwable (not Exception): OutOfMemoryError etc. must mark the job
-            // FAILED instead of killing the process
-            val msg = "${e.javaClass.simpleName}: ${e.message}"
-            AppLog.e(TAG, "Failed: '${job.title}' — $msg", e)
-            runCatching {
+        } catch (e: IOException) {
+            if (cancellations.contains(id) || _jobs.value.firstOrNull { it.id == id }?.status == DownloadStatus.PAUSED) {
+                update(id) { it.copy(status = DownloadStatus.PAUSED, bytes = part.length(), error = null) }
+                AppLog.i(TAG, "Paused: '${job.title}' — ${FmtSafe.bytes(part.length())} kept for resume")
+            } else {
+                val msg = "${e.javaClass.simpleName}: ${e.message ?: "I/O error"}"
+                AppLog.e(TAG, "Failed: '${job.title}' — $msg", e)
                 update(id) { it.copy(status = DownloadStatus.FAILED, error = msg.take(300)) }
+            }
+        } catch (e: Throwable) {
+            // Catch fatal worker failures without confusing a user pause with
+            // a failed download.
+            if (cancellations.contains(id) || _jobs.value.firstOrNull { it.id == id }?.status == DownloadStatus.PAUSED) {
+                update(id) { it.copy(status = DownloadStatus.PAUSED, bytes = part.length(), error = null) }
+                AppLog.i(TAG, "Paused: '${job.title}' — ${FmtSafe.bytes(part.length())} kept for resume")
+            } else {
+                val msg = "${e.javaClass.simpleName}: ${e.message ?: "Unknown error"}"
+                AppLog.e(TAG, "Failed: '${job.title}' — $msg", e)
+                runCatching { update(id) { it.copy(status = DownloadStatus.FAILED, error = msg.take(300)) } }
             }
         } finally {
             activeCalls.remove(id)
+            val shouldResume = resumeAfterPause.remove(id)
             cancellations.remove(id)
+            activeJobs.remove(id)
+            if (shouldResume) {
+                update(id) {
+                    if (it.status == DownloadStatus.PAUSED) it.copy(status = DownloadStatus.QUEUED, error = null) else it
+                }
+                kickService()
+            }
             persistNow()
         }
     }
