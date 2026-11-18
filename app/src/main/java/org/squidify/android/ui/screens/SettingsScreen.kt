@@ -104,12 +104,27 @@ fun SettingsScreen() {
 
     Column(Modifier.fillMaxSize()) {
         // ---------- header with tabs
-        Text(
-            text = "Settings",
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+        ) {
+            Text(
+                text = "PERSONALISE",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text = "Settings",
+                style = MaterialTheme.typography.headlineLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Text(
+                text = "Make Squirtify work the way you like.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -376,7 +391,7 @@ private fun GeneralSettings(
         SettingsCard {
             Column(Modifier.padding(16.dp)) {
                 SettingsCardTitle("About")
-                SettingRow("App", "Squirtify 1.7.4")
+                SettingRow("App", "Squirtify 1.7.5")
                 if (android.os.Build.VERSION.SDK_INT >= 33) {
                     val notifGranted = androidx.core.content.ContextCompat.checkSelfPermission(
                         context, android.Manifest.permission.POST_NOTIFICATIONS,
@@ -547,8 +562,8 @@ private fun CacheSizeRow(
 @Composable
 private fun SettingsCard(content: @Composable () -> Unit) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(24.dp),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp),
@@ -580,7 +595,7 @@ private fun ClickableRow(title: String, value: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
