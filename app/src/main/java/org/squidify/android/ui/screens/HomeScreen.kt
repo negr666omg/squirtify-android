@@ -161,9 +161,17 @@ fun HomeScreen(
     }
 }
 
-private fun historyAlbumKey(e: HistoryEntry): String =
-    if (e.source == DownloadSource.KHINSIDER) "khi:${e.album ?: e.title}"
-    else "sq:${e.albumId ?: e.album ?: e.title}"
+internal fun historyAlbumKey(e: HistoryEntry): String =
+    if (e.source == DownloadSource.KHINSIDER) {
+        // Different games can publish identically named albums. The page URL
+        // is the stable album identity; track URLs share the same parent page.
+        val albumUrl = e.khiTrackUrl
+            ?.substringBeforeLast('/')
+            ?.takeIf { it.isNotBlank() && it != e.khiTrackUrl }
+        "khi:${albumUrl ?: "unknown:${e.album ?: e.title}"}"
+    } else {
+        "sq:${e.albumId ?: e.album ?: e.title}"
+    }
 
 @Composable
 private fun RecentShelf(
