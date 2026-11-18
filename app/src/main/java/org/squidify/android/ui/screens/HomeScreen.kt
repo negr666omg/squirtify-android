@@ -111,12 +111,32 @@ fun HomeScreen(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 140.dp),
     ) {
         item {
-            Text(
-                text = "Home",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            )
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+            ) {
+                Column(Modifier.padding(horizontal = 22.dp, vertical = 20.dp)) {
+                    Text(
+                        text = "S Q U I R T I F Y",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Your music.",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "Pick up where the soundtrack left off.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
 
         if (error != null) {
@@ -213,20 +233,21 @@ private fun RecentAlbumCard(
 ) {
     Column(
         modifier = Modifier
-            .width(150.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .width(166.dp)
+            .clip(RoundedCornerShape(22.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .clickable(onClick = onClick)
-            .padding(8.dp),
+            .padding(9.dp),
     ) {
         CoverArt(
             url = coverUrl,
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f),
-            corner = 10.dp,
+            corner = 16.dp,
             contentDescription = title,
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(10.dp))
         Text(
             text = title,
             style = MaterialTheme.typography.titleSmall,
