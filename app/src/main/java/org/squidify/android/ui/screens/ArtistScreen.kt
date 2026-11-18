@@ -78,9 +78,13 @@ fun ArtistScreen(
                     sort = "playCount", order = "desc", start = 0, end = 10, artistId = artistId,
                 )
                 topSongs = nativeTop.map { it.toSong() }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 topSongs = emptyList()
             }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             error = e.message
         }
@@ -102,7 +106,9 @@ fun ArtistScreen(
                             graph.subsonic.starArtist(a.id)
                             artist = a.copy(starred = "now")
                         }
-                    } catch (_: Exception) {
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
                     }
                 }
             },
