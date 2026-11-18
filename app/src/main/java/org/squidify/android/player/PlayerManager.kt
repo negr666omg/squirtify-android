@@ -1225,6 +1225,10 @@ class PlayerManager(
         val idx = p.currentMediaItemIndex
         val song = _queue.value.getOrNull(idx) ?: return
         if (song.source != org.squidify.android.data.DownloadSource.KHINSIDER) return
+        if (song.khiTrackUrl?.let { downloads.downloadedUriForKhi(it) } != null) {
+            AppLog.i(TAG, "KHInsider quality change ignored: '" + song.title + "' is playing from a local download")
+            return
+        }
         val pos = absolutePositionOf(p)
         val playing = p.playWhenReady
         scope.launch {
@@ -1337,7 +1341,9 @@ class PlayerManager(
         val sem = Semaphore(6)
         songs.map { song ->
             async {
-                if (song.source == org.squidify.android.data.DownloadSource.KHINSIDER && song.khiDirectUrl == null) {
+                val isKhi = song.source == org.squidify.android.data.DownloadSource.KHINSIDER
+                val hasLocalFile = song.khiTrackUrl?.let { downloads.downloadedUriForKhi(it) } != null
+                if (isKhi && shouldResolveKhiTrack(song.khiDirectUrl != null, hasLocalFile)) {
                     sem.acquire()
                     try {
                         resolveKhi(song)
