@@ -768,10 +768,19 @@ class DownloadManager(
 
     // ---------------------------------------------------------------- cover art
 
-    /** Fetches the cover image and embeds it into the finished audio file. */
+    /**
+     * Embeds artwork only into formats with an implementation we know is safe.
+     * Writing an ID3 header to Ogg/Opus, WAV or MP4/M4A changes the container
+     * signature and can make a valid download unreadable.
+     */
     private fun embedCoverArt(job: DownloadJob, part: File) {
         val coverUrl = job.coverUrl ?: return
         if (part.length() < 512) return
+        val format = job.format.lowercase()
+        if (format !in setOf("flac", "mp3")) {
+            AppLog.d(TAG, "'${job.title}': cover embedding is not implemented for $format; preserving original file")
+            return
+        }
         try {
             val bytes = downloadBytes(coverUrl)
             if (bytes.isEmpty()) return
@@ -779,22 +788,37 @@ class DownloadManager(
             val head = ByteArray(4)
             java.io.RandomAccessFile(part, "r").use { it.readFully(head) }
 
-            val isFlac = head[0] == 'f'.code.toByte() && head[1] == 'L'.code.toByte() &&
-                head[2] == 'a'.code.toByte() && head[3] == 'C'.code.toByte()
-            val hasId3 = head[0] == 'I'.code.toByte() && head[1] == 'D'.code.toByte() && head[2] == '3'.code.toByte()
+            val isFlac = head.contentEquals(byteArrayOf(
+                'f'.code.toByte(), 'L'.code.toByte(), 'a'.code.toByte(), 'C'.code.toByte(),
+            ))
+            val hasId3 = head[0] == 'I'.code.toByte() &&
+                head[1] == 'D'.code.toByte() && head[2] == '3'.code.toByte()
 
-            if (isFlac) {
-                if (flacHasPicture(part)) {
-                    AppLog.d(TAG, "'${job.title}': FLAC already has embedded art — skipping")
-                    return
+            when (format) {
+                "flac" -> {
+                    if (!isFlac) {
+                        AppLog.w(TAG, "'${job.title}': expected FLAC but file signature did not match; skipped cover embedding")
+                        return
+                    }
+                    if (flacHasPicture(part)) {
+                        AppLog.d(TAG, "'${job.title}': FLAC already has embedded art — skipping")
+                        return
+                    }
+                    insertFlacPicture(part, bytes, mime)
+                    AppLog.i(TAG, "'${job.title}': embedded cover (${FmtSafe.bytes(bytes.size.toLong())}, $mime) into FLAC")
                 }
-                insertFlacPicture(part, bytes, mime)
-                AppLog.i(TAG, "'${job.title}': embedded cover (${FmtSafe.bytes(bytes.size.toLong())}, $mime) into FLAC")
-            } else if (!hasId3) {
-                prependId3Apic(part, bytes, mime)
-                AppLog.i(TAG, "'${job.title}': embedded cover (${FmtSafe.bytes(bytes.size.toLong())}, $mime) as ID3 APIC")
-            } else {
-                AppLog.d(TAG, "'${job.title}': file already tagged — skipping cover embed")
+                "mp3" -> {
+                    if (isFlac || head[0] == 'O'.code.toByte()) {
+                        AppLog.w(TAG, "'${job.title}': expected MP3 but file signature did not match; skipped cover embedding")
+                        return
+                    }
+                    if (hasId3) {
+                        AppLog.d(TAG, "'${job.title}': MP3 already has an ID3 tag — skipping cover embed")
+                        return
+                    }
+                    prependId3Apic(part, bytes, mime)
+                    AppLog.i(TAG, "'${job.title}': embedded cover (${FmtSafe.bytes(bytes.size.toLong())}, $mime) as ID3 APIC")
+                }
             }
         } catch (e: Exception) {
             AppLog.w(TAG, "Cover embedding skipped for '${job.title}': ${e.message}")
