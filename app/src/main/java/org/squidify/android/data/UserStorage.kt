@@ -30,6 +30,38 @@ import java.io.IOException
  *   images:    MediaStore Pictures/Squidify/Downloaded Images (API 29+)
  *   pre-29:    public Music dir via legacy write permission
  */
+/**
+ * Copies a stream via a same-directory temporary file, then atomically
+ * replaces the destination. Readers never observe a half-written JSON file.
+ */
+internal fun copyStreamAtomically(input: java.io.InputStream, destination: File) {
+    val parent = destination.parentFile ?: throw IOException("Destination has no parent directory")
+    if (!parent.exists() && !parent.mkdirs()) throw IOException("Cannot create destination directory")
+    val temporary = File(parent, "." + destination.name + ".migrating")
+    try {
+        temporary.outputStream().buffered().use { output ->
+            input.copyTo(output, 64 * 1024)
+            output.flush()
+        }
+        try {
+            java.nio.file.Files.move(
+                temporary.toPath(),
+                destination.toPath(),
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+            )
+        } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+            java.nio.file.Files.move(
+                temporary.toPath(),
+                destination.toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+            )
+        }
+    } finally {
+        temporary.delete()
+    }
+}
+
 class UserStorage(private val context: Context) {
 
     private val prefs: SharedPreferences =
@@ -203,56 +235,71 @@ class UserStorage(private val context: Context) {
         File(context.filesDir, DIR_USERDATA).also { if (!it.exists()) it.mkdirs() }
 
     /**
-     * Copies the internal user-data files into the freshly granted tree
-     * (only files that do not exist there yet).
+     * Copies internal user data into the freshly granted SAF tree. A temporary
+     * document is renamed only after the copy completes, so an interrupted
+     * migration cannot leave a truncated final JSON file.
      */
     fun migrateInternalToTree() {
-        val dir = treeSubDir(DIR_USERDATA) ?: return
+        val dir = treeSubDir(DIR_USERDATA)
+            ?: throw IOException("The selected Squidify folder is unavailable")
         listOf("settings.json", "favorites.json", "favorite-albums.json", "history.json", "downloads.json").forEach { name ->
-            runCatching {
-                val src = File(internalUserDir(), name)
-                if (!src.isFile) return@runCatching
-                if (dir.findFile(name) != null) return@runCatching
-                val dst = dir.createFile("application/json", name) ?: return@runCatching
-                resolver.openOutputStream(dst.uri, "w")?.use { out ->
-                    src.inputStream().use { it.copyTo(out, 64 * 1024) }
-                }
+            val src = File(internalUserDir(), name)
+            if (!src.isFile) return@forEach
+            val existing = dir.findFile(name)
+            if (existing?.isFile == true) return@forEach
+            if (existing != null) throw IOException("$name exists as a folder in the selected storage tree")
+
+            val temporaryName = "$name.migrating"
+            dir.findFile(temporaryName)?.delete()
+            val temporary = dir.createFile("application/octet-stream", temporaryName)
+                ?: throw IOException("Cannot create a temporary copy for $name")
+            try {
+                resolver.openOutputStream(temporary.uri, "w")?.use { output ->
+                    src.inputStream().use { input -> input.copyTo(output, 64 * 1024) }
+                } ?: throw IOException("Cannot open the temporary copy for $name")
+                if (!temporary.renameTo(name)) throw IOException("Cannot finalize the migrated copy of $name")
                 AppLog.i(TAG, "Migrated $name into the Squidify/UserData folder")
+            } catch (failure: Exception) {
+                temporary.delete()
+                throw failure
             }
         }
     }
 
     /**
-     * Moves every user-data file into Squidify/UserData once "All files
-     * access" is granted: from the internal fallback dir and from a
-     * previously granted SAF tree. Never overwrites existing files.
+     * Moves user data into Squidify/UserData after "All files access" is
+     * granted. SAF is copied FIRST because readUserData() checked it before
+     * the internal fallback; internal files are used only when SAF has no
+     * corresponding file. The selected SAF tree must be reachable or the
+     * migration fails and MainActivity will retry it on the next launch.
      */
     fun migrateToAllFiles() {
-        if (!allFilesMode) return
-        val target = afUserDir() ?: return
-        // 1) internal fallback files
-        runCatching {
-            File(context.filesDir, DIR_USERDATA).listFiles()?.forEach { src ->
-                val dst = File(target, src.name)
-                if (src.isFile && !dst.exists()) src.copyTo(dst)
+        if (!allFilesMode) throw IOException("All-files access is no longer granted")
+        val target = afUserDir() ?: throw IOException("Squidify/UserData is unavailable")
+        val copiedFromTree = mutableSetOf<String>()
+
+        if (treeUri != null) {
+            if (!treeReachable()) throw IOException("The previously selected Squidify folder is unavailable")
+            val sourceDir = treeSubDir(DIR_USERDATA)
+                ?: throw IOException("Cannot access UserData in the selected Squidify folder")
+            sourceDir.listFiles().forEach { document ->
+                if (!document.isFile) return@forEach
+                val name = document.name ?: return@forEach
+                val input = resolver.openInputStream(document.uri)
+                    ?: throw IOException("Cannot read $name from the selected Squidify folder")
+                input.use { copyStreamAtomically(it, File(target, name)) }
+                copiedFromTree += name
+                AppLog.i(TAG, "Migrated $name from the selected folder into " + AllFilesAccess.rootLabel() + "/" + DIR_USERDATA)
             }
         }
-        // 2) SAF tree files (same folder picked before, now bypassed)
-        runCatching {
-            treeSubDir(DIR_USERDATA)?.let { dir ->
-                dir.listFiles()?.forEach { f ->
-                    if (!f.isFile) return@forEach
-                    val name = f.name ?: return@forEach
-                    val dst = File(target, name)
-                    if (!dst.exists()) {
-                        resolver.openInputStream(f.uri)?.use { input ->
-                            dst.outputStream().use { input.copyTo(it) }
-                        }
-                    }
-                }
-            }
+
+        // Do not overwrite a newer SAF copy with a stale internal fallback.
+        File(context.filesDir, DIR_USERDATA).listFiles()?.forEach { source ->
+            if (!source.isFile || source.name in copiedFromTree) return@forEach
+            copyStreamAtomically(source.inputStream(), File(target, source.name))
+            AppLog.i(TAG, "Migrated " + source.name + " from internal fallback into " + AllFilesAccess.rootLabel() + "/" + DIR_USERDATA)
         }
-        AppLog.i(TAG, "User data migrated into ${AllFilesAccess.rootLabel()}/$DIR_USERDATA")
+        AppLog.i(TAG, "User data migrated into " + AllFilesAccess.rootLabel() + "/" + DIR_USERDATA)
     }
 
     // ------------------------------------------------------------- downloads
