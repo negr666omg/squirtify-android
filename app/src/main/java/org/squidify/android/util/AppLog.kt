@@ -84,20 +84,24 @@ object AppLog {
     fun e(tag: String, message: String, t: Throwable? = null) = log(Level.ERROR, tag, message, t)
 
     fun log(level: Level, tag: String, message: String, t: Throwable? = null) {
-        val entry = Entry(
-            id = ++counter,
-            timeMs = System.currentTimeMillis(),
-            level = level,
-            tag = tag,
-            message = redactSensitiveValues(message),
-            throwable = t?.let { thr ->
-                redactSensitiveValues(
-                    thr.toString() + "\n" + thr.stackTrace.take(8).joinToString("\n") { "    at $it" },
-                )
-            },
-        )
-        synchronized(lock) {
-            _entries.value = (_entries.value + entry).takeLast(MAX_MEMORY)
+        val safeMessage = redactSensitiveValues(message)
+        val safeThrowable = t?.let { thr ->
+            redactSensitiveValues(
+                thr.toString() + "\n" + thr.stackTrace.take(8).joinToString("\n") { "    at $it" },
+            )
+        }
+        // Allocate the ID and publish the entry atomically. Logging can be
+        // called concurrently by the UI, playback and two download workers;
+        // duplicate LazyColumn keys previously could crash Settings → Log.
+        val entry = synchronized(lock) {
+            Entry(
+                id = ++counter,
+                timeMs = System.currentTimeMillis(),
+                level = level,
+                tag = tag,
+                message = safeMessage,
+                throwable = safeThrowable,
+            ).also { _entries.value = (_entries.value + it).takeLast(MAX_MEMORY) }
         }
         ioScope.launch { appendToFile(entry) }
     }
