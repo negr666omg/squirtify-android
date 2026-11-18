@@ -81,17 +81,18 @@ fun KhiAlbumScreen(
     LaunchedEffect(albumUrl, reload) {
         error = null
         try {
-            album = graph.khi.album(albumUrl)
+            val loadedAlbum = graph.khi.album(albumUrl)
+            graph.offlineLibrary.cacheKhi(
+                albumUrl,
+                loadedAlbum,
+                graph.khi.imageUrl(loadedAlbum.coverUrl),
+            )
+            album = loadedAlbum
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (e: Exception) {
             error = e.message
         }
-    }
-
-    LaunchedEffect(albumUrl, album) {
-        val a = album ?: return@LaunchedEffect
-        graph.offlineLibrary.cacheKhi(albumUrl, a, graph.khi.imageUrl(a.coverUrl))
     }
 
     LaunchedEffect(album, highlightTrackUrl) {
