@@ -83,16 +83,11 @@ fun AlbumScreen(
     var showCoverViewer by remember { mutableStateOf(false) }
     val favAlbumIds by graph.favorites.albumIds.collectAsState()
 
-    LaunchedEffect(album, songs) {
-        val a = album ?: return@LaunchedEffect
-        val tracks = songs ?: return@LaunchedEffect
-        graph.offlineLibrary.cacheSquidify(a, tracks, a.coverArtUrl(600))
-    }
-
     LaunchedEffect(albumId, reload) {
         error = null
         try {
             val (a, s) = graph.subsonic.getAlbum(albumId)
+            graph.offlineLibrary.cacheSquidify(a, s, a.coverArtUrl(600))
             album = a
             songs = s
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
