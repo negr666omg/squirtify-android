@@ -162,8 +162,15 @@ class UserStorage(private val context: Context) {
 
     // ------------------------------------------------------------- all-files mode
 
-    /** True when the user granted "All files access" — direct File I/O mode. */
-    val allFilesMode: Boolean get() = AllFilesAccess.isGranted()
+    /**
+     * Direct File I/O is enabled only after the current all-files permission
+     * grant has completed its data migration. While migration is pending, keep
+     * using SAF/internal storage so writes cannot diverge from the source data.
+     */
+    val allFilesMode: Boolean
+        get() = AllFilesAccess.isGranted() &&
+            prefs.getBoolean("all_files_migrated", false) &&
+            prefs.getInt("all_files_migration_version", 0) >= 2
 
     /** Squidify/UserData via all-files access, or null. */
     private fun afUserDir(): File? = AllFilesAccess.subDir(DIR_USERDATA)
@@ -276,8 +283,15 @@ class UserStorage(private val context: Context) {
      * migration fails and MainActivity will retry it on the next launch.
      */
     fun migrateToAllFiles() {
-        if (!allFilesMode) throw IOException("All-files access is no longer granted")
+        if (!AllFilesAccess.isGranted()) throw IOException("All-files access is no longer granted")
         val target = afUserDir() ?: throw IOException("Squidify/UserData is unavailable")
+        val supportedFiles = setOf(
+            "settings.json",
+            "favorites.json",
+            "favorite-albums.json",
+            "history.json",
+            "downloads.json",
+        )
         val copiedFromTree = mutableSetOf<String>()
 
         if (treeUri != null) {
@@ -287,6 +301,9 @@ class UserStorage(private val context: Context) {
             sourceDir.listFiles().forEach { document ->
                 if (!document.isFile) return@forEach
                 val name = document.name ?: return@forEach
+                // Ignore interrupted *.migrating files and anything outside
+                // the app's known user-data registry.
+                if (name !in supportedFiles) return@forEach
                 val input = resolver.openInputStream(document.uri)
                     ?: throw IOException("Cannot read $name from the selected Squidify folder")
                 input.use { copyStreamAtomically(it, File(target, name)) }
@@ -295,12 +312,22 @@ class UserStorage(private val context: Context) {
             }
         }
 
-        // Do not overwrite a newer SAF copy with a stale internal fallback.
+        // Keep the previous readUserData precedence: SAF first, then internal
+        // fallback. Internal files fill only names absent from the selected
+        // tree; they never overwrite a file that was read from SAF.
         File(context.filesDir, DIR_USERDATA).listFiles()?.forEach { source ->
-            if (!source.isFile || source.name in copiedFromTree) return@forEach
+            if (!source.isFile || source.name !in supportedFiles || source.name in copiedFromTree) return@forEach
             copyStreamAtomically(source.inputStream(), File(target, source.name))
             AppLog.i(TAG, "Migrated " + source.name + " from internal fallback into " + AllFilesAccess.rootLabel() + "/" + DIR_USERDATA)
         }
+
+        // Do not switch UserStorage into direct File I/O mode until every
+        // source has been copied successfully. A failed/unavailable SAF source
+        // leaves the old storage path active and can safely be retried.
+        prefs.edit()
+            .putBoolean("all_files_migrated", true)
+            .putInt("all_files_migration_version", 2)
+            .apply()
         AppLog.i(TAG, "User data migrated into " + AllFilesAccess.rootLabel() + "/" + DIR_USERDATA)
     }
 
