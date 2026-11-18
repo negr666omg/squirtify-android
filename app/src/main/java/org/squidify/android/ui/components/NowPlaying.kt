@@ -1,3 +1,5 @@
+@file:OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package org.squidify.android.ui.components
 
 import android.content.Intent
