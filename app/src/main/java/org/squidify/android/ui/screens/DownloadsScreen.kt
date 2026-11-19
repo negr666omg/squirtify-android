@@ -25,8 +25,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.TextButton
@@ -353,7 +356,7 @@ fun DownloadsScreen() {
                             expandedAlbum = if (expandedAlbum == group.key) null else group.key
                         },
                         onPlay = { playGroup(group, 0) },
-                        onLongClick = {
+                        onDelete = {
                             pendingDeleteAlbum = group
                             deleteAlbumFailed = false
                         },
@@ -636,8 +639,9 @@ private fun DownloadsAlbumRow(
     expanded: Boolean,
     onToggle: () -> Unit,
     onPlay: () -> Unit,
-    onLongClick: () -> Unit,
+    onDelete: () -> Unit,
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
     val chevron by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
@@ -648,7 +652,7 @@ private fun DownloadsAlbumRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .combinedClickable(onClick = onToggle, onLongClick = onLongClick)
+            .combinedClickable(onClick = onToggle, onLongClick = { menuExpanded = true })
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -687,6 +691,27 @@ private fun DownloadsAlbumRow(
                     imageVector = Icons.Filled.PlayArrow,
                     contentDescription = "Play album",
                     tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+        Box {
+            IconButton(onClick = { menuExpanded = true }) {
+                Icon(
+                    imageVector = Icons.Filled.MoreVert,
+                    contentDescription = "Album actions",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Delete from device") },
+                    onClick = {
+                        menuExpanded = false
+                        onDelete()
+                    },
                 )
             }
         }
