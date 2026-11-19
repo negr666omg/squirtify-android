@@ -174,7 +174,7 @@ fun CoverArt(
             AsyncImage(
                 model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
                     .data(url)
-                    .crossfade(true)
+                    .crossfade(false)
                     .build(),
                 contentDescription = contentDescription,
                 contentScale = ContentScale.Crop,
