@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -243,19 +242,20 @@ fun AlbumScreen(
                                 Icon(SqIcons.Shuffle, contentDescription = "Shuffle", modifier = Modifier.size(24.dp))
                             }
                             val queueIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                            FilledTonalButton(
+                            FilledTonalIconButton(
                                 onClick = {
                                     scope.launch { player.addToQueue(list.map { PlayerSong.from(it) }) }
                                 },
                                 interactionSource = queueIsr,
                                 modifier = Modifier
-                                    .height(52.dp)
+                                    .size(52.dp)
                                     .pressScale(queueIsr, pressedScale = 0.92f),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp),
                             ) {
-                                Icon(SqIcons.PlaylistAdd, contentDescription = null, modifier = Modifier.size(20.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Queue", style = MaterialTheme.typography.labelLarge)
+                                Icon(
+                                    SqIcons.PlaylistAdd,
+                                    contentDescription = "Add album to queue",
+                                    modifier = Modifier.size(24.dp),
+                                )
                             }
                             FilledTonalIconButton(
                                 onClick = { showAlbumDownloadDialog = true },

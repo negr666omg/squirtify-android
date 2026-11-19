@@ -32,7 +32,7 @@ jobs:
         with:
           gradle-version: "8.13"
 
-      - name: Run unit tests and build unsigned Release APK
+      - name: Run unit tests and build installable Release APK
         run: gradle --no-daemon testDebugUnitTest assembleRelease
 
       - name: Upload Release APK
