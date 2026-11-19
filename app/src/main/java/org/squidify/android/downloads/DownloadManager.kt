@@ -38,8 +38,8 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Persistent, resumable download queue with two parallel workers.
- * Files land in Squidify/Downloads/<Album>/ when the storage folder is
- * granted (SAF), otherwise Music/Squidify/Downloads/<Album> via MediaStore
+ * Files land in Squirtify/Downloads/<Album>/ when the storage folder is
+ * granted (SAF), otherwise Music/Squirtify/Downloads/<Album> via MediaStore
  * (API 29+) or the legacy public path on older devices.
  * Track files get the album cover embedded; full-album downloads also save
  * the album's cover images into the album folder in original quality.
@@ -96,7 +96,7 @@ class DownloadManager(
 
     // ------------------------------------------------------------- dirs
 
-    /** Staging area for in-progress .part files (Squidify/cache when possible). */
+    /** Staging area for in-progress .part files (Squirtify/cache when possible). */
     private fun stagingDir(): File {
         val dir = org.squidify.android.util.AllFilesAccess.subDir("cache/staging")
             ?: File(context.filesDir, "download-parts")
@@ -142,7 +142,7 @@ class DownloadManager(
             val album = UserStorage.sanitizeSegment(job.album ?: job.artist ?: "Unknown Album")
             val publicDir = File(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC),
-                "Squidify/Downloads/" + album,
+                "Squirtify/Downloads/" + album,
             )
             val publicFile = File(publicDir, job.fileName)
             if (publicFile.isFile && publicFile.length() > 0L) return publicFile
@@ -278,15 +278,15 @@ class DownloadManager(
     // ---------------------------------------------------------------- enqueues
 
     @Synchronized
-    fun enqueueSquidify(song: Song, quality: StreamQuality) {
+    fun enqueueSquirtify(song: Song, quality: StreamQuality) {
         runCatching {
-            enqueueSquidifyInner(song, quality)
+            enqueueSquirtifyInner(song, quality)
         }.onFailure { t ->
             AppLog.e(TAG, "Queuing '${song.title}' failed: ${t.javaClass.simpleName}: ${t.message}", t)
         }
     }
 
-    private fun enqueueSquidifyInner(song: Song, quality: StreamQuality) {
+    private fun enqueueSquirtifyInner(song: Song, quality: StreamQuality) {
         if (_jobs.value.any { it.source == DownloadSource.SQUIDIFY && it.songId == song.id && it.status != DownloadStatus.FAILED }) {
             AppLog.w(TAG, "Download of '${song.title}' skipped — already queued or done")
             return
@@ -320,15 +320,15 @@ class DownloadManager(
     }
 
     @Synchronized
-    fun enqueueSquidifyAll(songs: List<Song>, quality: StreamQuality) {
+    fun enqueueSquirtifyAll(songs: List<Song>, quality: StreamQuality) {
         runCatching {
-            enqueueSquidifyAllInner(songs, quality)
+            enqueueSquirtifyAllInner(songs, quality)
         }.onFailure { t ->
             AppLog.e(TAG, "Queuing album downloads failed: ${t.javaClass.simpleName}: ${t.message}", t)
         }
     }
 
-    private fun enqueueSquidifyAllInner(songs: List<Song>, quality: StreamQuality) {
+    private fun enqueueSquirtifyAllInner(songs: List<Song>, quality: StreamQuality) {
         val existing = _jobs.value
         val albumName = songs.firstOrNull()?.album
         val albumCoverArt = songs.firstOrNull()?.let { it.coverArt ?: it.albumId?.let { a -> "al-$a" } }
@@ -548,7 +548,7 @@ class DownloadManager(
         return ok
     }
 
-    /** Local playable Uri for a downloaded Squidify song (any quality). */
+    /** Local playable Uri for a downloaded Squirtify song (any quality). */
     fun downloadedUriFor(songId: String): Uri? {
         val job = _jobs.value.firstOrNull {
             it.source == DownloadSource.SQUIDIFY && it.songId == songId && it.status == DownloadStatus.DONE
@@ -1106,7 +1106,7 @@ class DownloadManager(
     // ---------------------------------------------------------------- publish
 
     /**
-     * Move the finished .part file into Squidify/Downloads/<Album>/ via the
+     * Move the finished .part file into Squirtify/Downloads/<Album>/ via the
      * storage layer (SAF tree, MediaStore or legacy path).
      * Returns the playable Uri, or null when the legacy path was used.
      */

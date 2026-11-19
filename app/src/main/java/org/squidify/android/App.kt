@@ -7,6 +7,7 @@ import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import org.squidify.android.di.AppGraph
+import org.squidify.android.util.AllFilesAccess
 import org.squidify.android.util.AppLog
 import org.squidify.android.util.CrashHandler
 
@@ -21,6 +22,9 @@ class App : Application() {
         // into files/last_crash.txt (stack trace + the app log up to that point)
         // and surfaced as a "copy log" dialog on the next launch.
         CrashHandler.install(this)
+        // Rename the previous visible root before logs, caches or repositories
+        // can create the new folder. Existing user data stays on-device.
+        if (AllFilesAccess.isGranted()) AllFilesAccess.migrateLegacyRoot()
         AppLog.init(this)
         AppLog.i("App", "Squirtify starting (pid ${android.os.Process.myPid()}, Android ${android.os.Build.VERSION.RELEASE})")
         graph = try {

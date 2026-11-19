@@ -17,17 +17,17 @@ import java.io.IOException
  * User-visible storage layer.
  *
  * Preferred layout ("All files access" granted — the default the app asks for):
- *   /storage/emulated/0/Squidify/UserData/          — settings.json, favorites.json…
- *   /storage/emulated/0/Squidify/Downloads/<Album>/ — downloaded tracks + covers
- *   /storage/emulated/0/Squidify/Downloaded Images/ — covers saved from the viewer
+ *   /storage/emulated/0/Squirtify/UserData/          — settings.json, favorites.json…
+ *   /storage/emulated/0/Squirtify/Downloads/<Album>/ — downloaded tracks + covers
+ *   /storage/emulated/0/Squirtify/Downloaded Images/ — covers saved from the viewer
  *
  * Secondary layout (SAF tree picked before/without all-files access):
- *   <Squidify tree>/UserData/ · <Squidify tree>/Downloads/<Album>/ · …
+ *   <Squirtify tree>/UserData/ · <Squirtify tree>/Downloads/<Album>/ · …
  *
  * Fallback without either (scoped storage safe):
  *   internal files: <filesDir>/UserData/
- *   audio:     MediaStore Music/Squidify/Downloads/<Album> (API 29+)
- *   images:    MediaStore Pictures/Squidify/Downloaded Images (API 29+)
+ *   audio:     MediaStore Music/Squirtify/Downloads/<Album> (API 29+)
+ *   images:    MediaStore Pictures/Squirtify/Downloaded Images (API 29+)
  *   pre-29:    public Music dir via legacy write permission
  */
 /**
@@ -71,7 +71,7 @@ class UserStorage(private val context: Context) {
 
     private val resolver = context.contentResolver
 
-    /** Granted SAF tree for the "Squidify" folder, or null. */
+    /** Granted SAF tree for the "Squirtify" folder, or null. */
     var treeUri: String?
         get() = prefs.getString(KEY_TREE, null)
         private set(value) {
@@ -97,7 +97,7 @@ class UserStorage(private val context: Context) {
     // ------------------------------------------------------------- tree mgmt
 
     /**
-     * Adopts the picked folder as the Squidify root, creates the standard
+     * Adopts the picked folder as the Squirtify root, creates the standard
      * subfolders and migrates internal user data into UserData/.
      * Returns false when the folder is not usable.
      */
@@ -149,7 +149,7 @@ class UserStorage(private val context: Context) {
         val existing = root.findFile(name)
         if (existing != null && existing.isDirectory) return existing
         val created = root.createDirectory(name)
-            ?: throw IOException("Cannot create folder '$name' in the Squidify folder")
+            ?: throw IOException("Cannot create folder '$name' in the Squirtify folder")
         return created
     }
 
@@ -172,12 +172,12 @@ class UserStorage(private val context: Context) {
             prefs.getBoolean("all_files_migrated", false) &&
             prefs.getInt("all_files_migration_version", 0) >= 2
 
-    /** Squidify/UserData via all-files access, or null. */
+    /** Squirtify/UserData via all-files access, or null. */
     private fun afUserDir(): File? = AllFilesAccess.subDir(DIR_USERDATA)
 
     /** Reads a user-data file (all-files → SAF tree → internal fallback). */
     fun readUserData(fileName: String): String? {
-        // 0) direct File I/O in Squidify/UserData ("All files access" granted)
+        // 0) direct File I/O in Squirtify/UserData ("All files access" granted)
         if (allFilesMode) {
             runCatching {
                 val f = File(afUserDir(), fileName)
@@ -203,10 +203,10 @@ class UserStorage(private val context: Context) {
 
     /** Writes a user-data file (all-files → SAF tree → internal fallback). */
     fun writeUserData(fileName: String, text: String) {
-        // 0) direct File I/O in Squidify/UserData ("All files access" granted)
+        // 0) direct File I/O in Squirtify/UserData ("All files access" granted)
         if (allFilesMode) {
             runCatching {
-                val dir = afUserDir() ?: throw IOException("Squidify folder unavailable")
+                val dir = afUserDir() ?: throw IOException("Squirtify folder unavailable")
                 File(dir, fileName).writeText(text)
                 return
             }.onFailure {
@@ -250,7 +250,7 @@ class UserStorage(private val context: Context) {
      */
     fun migrateInternalToTree() {
         val dir = treeSubDir(DIR_USERDATA)
-            ?: throw IOException("The selected Squidify folder is unavailable")
+            ?: throw IOException("The selected Squirtify folder is unavailable")
         listOf("settings.json", "favorites.json", "favorite-albums.json", "history.json", "downloads.json").forEach { name ->
             val src = File(internalUserDir(), name)
             if (!src.isFile) return@forEach
@@ -267,7 +267,7 @@ class UserStorage(private val context: Context) {
                     src.inputStream().use { input -> input.copyTo(output, 64 * 1024) }
                 } ?: throw IOException("Cannot open the temporary copy for $name")
                 if (!temporary.renameTo(name)) throw IOException("Cannot finalize the migrated copy of $name")
-                AppLog.i(TAG, "Migrated $name into the Squidify/UserData folder")
+                AppLog.i(TAG, "Migrated $name into the Squirtify/UserData folder")
             } catch (failure: Exception) {
                 temporary.delete()
                 throw failure
@@ -276,7 +276,7 @@ class UserStorage(private val context: Context) {
     }
 
     /**
-     * Moves user data into Squidify/UserData after "All files access" is
+     * Moves user data into Squirtify/UserData after "All files access" is
      * granted. SAF is copied FIRST because readUserData() checked it before
      * the internal fallback; internal files are used only when SAF has no
      * corresponding file. The selected SAF tree must be reachable or the
@@ -284,7 +284,7 @@ class UserStorage(private val context: Context) {
      */
     fun migrateToAllFiles() {
         if (!AllFilesAccess.isGranted()) throw IOException("All-files access is no longer granted")
-        val target = afUserDir() ?: throw IOException("Squidify/UserData is unavailable")
+        val target = afUserDir() ?: throw IOException("Squirtify/UserData is unavailable")
         val supportedFiles = setOf(
             "settings.json",
             "favorites.json",
@@ -295,9 +295,9 @@ class UserStorage(private val context: Context) {
         val copiedFromTree = mutableSetOf<String>()
 
         if (treeUri != null) {
-            if (!treeReachable()) throw IOException("The previously selected Squidify folder is unavailable")
+            if (!treeReachable()) throw IOException("The previously selected Squirtify folder is unavailable")
             val sourceDir = treeSubDir(DIR_USERDATA)
-                ?: throw IOException("Cannot access UserData in the selected Squidify folder")
+                ?: throw IOException("Cannot access UserData in the selected Squirtify folder")
             sourceDir.listFiles().forEach { document ->
                 if (!document.isFile) return@forEach
                 val name = document.name ?: return@forEach
@@ -305,7 +305,7 @@ class UserStorage(private val context: Context) {
                 // the app's known user-data registry.
                 if (name !in supportedFiles) return@forEach
                 val input = resolver.openInputStream(document.uri)
-                    ?: throw IOException("Cannot read $name from the selected Squidify folder")
+                    ?: throw IOException("Cannot read $name from the selected Squirtify folder")
                 input.use { copyStreamAtomically(it, File(target, name)) }
                 copiedFromTree += name
                 AppLog.i(TAG, "Migrated $name from the selected folder into " + AllFilesAccess.rootLabel() + "/" + DIR_USERDATA)
@@ -335,24 +335,24 @@ class UserStorage(private val context: Context) {
 
     fun downloadsLocationLabel(): String =
         if (allFilesMode) "${AllFilesAccess.rootLabel()}/Downloads/<Album>"
-        else if (hasTree) "Squidify/Downloads/<Album>"
-        else if (Build.VERSION.SDK_INT >= 29) "Music/Squidify/Downloads/<Album>"
+        else if (hasTree) "Squirtify/Downloads/<Album>"
+        else if (Build.VERSION.SDK_INT >= 29) "Music/Squirtify/Downloads/<Album>"
         else File(
             android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC),
-            "Squidify/Downloads",
+            "Squirtify/Downloads",
         ).absolutePath
 
     fun imagesLocationLabel(): String =
         if (allFilesMode) "${AllFilesAccess.rootLabel()}/Downloaded Images"
-        else if (hasTree) "Squidify/Downloaded Images"
-        else if (Build.VERSION.SDK_INT >= 29) "Pictures/Squidify/Downloaded Images"
+        else if (hasTree) "Squirtify/Downloaded Images"
+        else if (Build.VERSION.SDK_INT >= 29) "Pictures/Squirtify/Downloaded Images"
         else File(
             android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES),
-            "Squidify/Downloaded Images",
+            "Squirtify/Downloaded Images",
         ).absolutePath
 
     /**
-     * Publishes a finished download into Squidify/Downloads/<Album>/.
+     * Publishes a finished download into Squirtify/Downloads/<Album>/.
      * Returns the playable Uri, or null when the legacy path was used.
      */
     suspend fun publishDownload(
@@ -367,7 +367,7 @@ class UserStorage(private val context: Context) {
         source: File,
     ): Uri? = withContext(Dispatchers.IO) {
         val safeAlbum = sanitizeSegment(album)
-        // 0) direct File I/O in Squidify/Downloads/<Album> ("All files access")
+        // 0) direct File I/O in Squirtify/Downloads/<Album> ("All files access")
         if (allFilesMode) {
             runCatching {
                 val albumDir = File(AllFilesAccess.subDir(DIR_DOWNLOADS), safeAlbum)
@@ -424,7 +424,7 @@ class UserStorage(private val context: Context) {
             val values = android.content.ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                 put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                put(MediaStore.MediaColumns.RELATIVE_PATH, "Music/Squidify/Downloads/$album")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "Music/Squirtify/Downloads/$album")
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
                 if (!isImage) {
                     if (durationMs > 0) put(MediaStore.Audio.Media.DURATION, durationMs)
@@ -452,7 +452,7 @@ class UserStorage(private val context: Context) {
         } else {
             val pub = File(
                 android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC),
-                "Squidify/Downloads/$album",
+                "Squirtify/Downloads/$album",
             )
             val dir = if (pub.canWrite() || pub.mkdirs()) pub else legacyDir()
             val target = File(dir, fileName)
@@ -473,7 +473,7 @@ class UserStorage(private val context: Context) {
     // ------------------------------------------------------------- images
 
     /**
-     * Saves an image (cover art) into Squidify/Downloaded Images/.
+     * Saves an image (cover art) into Squirtify/Downloaded Images/.
      * Returns a human-readable location for the toast.
      */
     suspend fun saveImage(
@@ -481,10 +481,10 @@ class UserStorage(private val context: Context) {
         mimeType: String,
         bytes: ByteArray,
     ): String = withContext(Dispatchers.IO) {
-        // 0) direct File I/O in Squidify/Downloaded Images ("All files access")
+        // 0) direct File I/O in Squirtify/Downloaded Images ("All files access")
         if (allFilesMode) {
             runCatching {
-                val dir = AllFilesAccess.subDir(DIR_IMAGES) ?: throw IOException("Squidify folder unavailable")
+                val dir = AllFilesAccess.subDir(DIR_IMAGES) ?: throw IOException("Squirtify folder unavailable")
                 File(dir, fileName).writeBytes(bytes)
                 return@withContext "${AllFilesAccess.rootLabel()}/$DIR_IMAGES/$fileName"
             }.onFailure {
@@ -503,7 +503,7 @@ class UserStorage(private val context: Context) {
                 }
                 resolver.openOutputStream(target.uri, "w")?.use { it.write(bytes) }
                     ?: throw IOException("Cannot open $fileName")
-                return@withContext "Squidify/Downloaded Images/$fileName"
+                return@withContext "Squirtify/Downloaded Images/$fileName"
             }.onFailure {
                 AppLog.w(TAG, "SAF image save failed: ${it.message} — trying MediaStore")
             }
@@ -513,7 +513,7 @@ class UserStorage(private val context: Context) {
             val values = android.content.ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                 put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/Squidify/Downloaded Images")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/Squirtify/Downloaded Images")
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
             val uri = resolver.insert(
@@ -524,12 +524,12 @@ class UserStorage(private val context: Context) {
             values.clear()
             values.put(MediaStore.MediaColumns.IS_PENDING, 0)
             resolver.update(uri, values, null, null)
-            return@withContext "Pictures/Squidify/Downloaded Images/$fileName"
+            return@withContext "Pictures/Squirtify/Downloaded Images/$fileName"
         }
         // 3) legacy direct write
         val dir = File(
             android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES),
-            "Squidify/Downloaded Images",
+            "Squirtify/Downloaded Images",
         )
         if (dir.canWrite() || dir.mkdirs()) {
             File(dir, fileName).writeBytes(bytes)
@@ -559,9 +559,9 @@ class UserStorage(private val context: Context) {
     }
 
     private fun dirPathLabel(dir: String): String = when (dir) {
-        DIR_DOWNLOADS -> "Squidify/Downloads"
-        DIR_USERDATA -> "Squidify/UserData"
-        DIR_IMAGES -> "Squidify/Downloaded Images"
+        DIR_DOWNLOADS -> "Squirtify/Downloads"
+        DIR_USERDATA -> "Squirtify/UserData"
+        DIR_IMAGES -> "Squirtify/Downloaded Images"
         else -> dir
     }
 
