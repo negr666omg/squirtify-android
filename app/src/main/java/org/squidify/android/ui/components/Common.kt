@@ -165,17 +165,18 @@ fun CoverArt(
     corner: Dp = 12.dp,
     contentDescription: String? = null,
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val imageRequest = remember(url, context) {
+        url?.let { coil.request.ImageRequest.Builder(context).data(it).build() }
+    }
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(corner))
             .background(MaterialTheme.colorScheme.surfaceVariant),
     ) {
-        if (url != null) {
+        if (imageRequest != null) {
             AsyncImage(
-                model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
-                    .data(url)
-                    .crossfade(false)
-                    .build(),
+                model = imageRequest,
                 contentDescription = contentDescription,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.matchParentSize(),
