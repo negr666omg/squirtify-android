@@ -460,7 +460,6 @@ private fun PlayingTab(
     repeatMode: Int,
     playbackTempo: Float,
     isHearted: Boolean,
-    downloadStatus: DownloadStatus?,
     scrollingText: Boolean,
     hideArtist: Boolean,
     onTogglePlay: () -> Unit,
