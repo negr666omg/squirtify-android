@@ -167,6 +167,7 @@ class PlayerManager(
     private var ticker: Job? = null
     private var scrobbledCurrent = false
     private var saveJob: Job? = null
+    private var localQueueSaveJob: Job? = null
     private var playbackRateSaveJob: Job? = null
     private var pendingSwitch: Job? = null
     private var playGeneration = 0L
@@ -1000,6 +1001,7 @@ class PlayerManager(
                 requestAudioFocus()
                 _isPlaying.value = true
             }
+            saveQueue()
             return
         }
         val p = activeP ?: return
@@ -1016,6 +1018,7 @@ class PlayerManager(
             requestAudioFocus()
         }
         _isPlaying.value = positionSource()?.isPlaying == true
+        saveQueue()
     }
 
     fun next() {
@@ -1101,10 +1104,12 @@ class PlayerManager(
                     "(state=${stateName(p.playbackState)}, hasItem=${p.currentMediaItem?.mediaId ?: "-"}, want=${song.id})",
             )
             _positionMs.value = pos
+            scheduleLocalQueueSave()
             return
         }
 
-        val transcodedStream = song.source == org.squidify.android.data.DownloadSource.SQUIDIFY &&
+        val transcodedStream = song.source
+ == org.squidify.android.data.DownloadSource.SQUIDIFY &&
             settings.state().value.streamingQuality != StreamQuality.ORIGINAL &&
             downloads.downloadedUriFor(song.id) == null
         val metaDur = song.durationMs
@@ -1135,6 +1140,7 @@ class PlayerManager(
             p.seekTo(pos)
             _positionMs.value = pos
         }
+        scheduleLocalQueueSave()
     }
 
     /** Replays a parked seek once its track is finally READY; a parked seek
@@ -2059,7 +2065,17 @@ class PlayerManager(
         }
     }
 
+    private fun scheduleLocalQueueSave() {
+        localQueueSaveJob?.cancel()
+        localQueueSaveJob = scope.launch {
+            delay(500)
+            val songs = _queue.value
+            if (songs.isEmpty()) clearLocalQueue() else persistLocalQueue(songs)
+        }
+    }
+
     private fun saveQueue() {
+        localQueueSaveJob?.cancel()
         val songsNow = _queue.value
         if (songsNow.isEmpty()) {
             clearLocalQueue()
