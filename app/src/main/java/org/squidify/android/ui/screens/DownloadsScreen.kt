@@ -118,14 +118,26 @@ fun DownloadsScreen() {
     val pendingKeys = uniqueKeys(pending)
     val failedKeys = uniqueKeys(failed)
 
+    // Build lookup maps once per history/favourites update. Scanning both
+    // full collections for every downloaded track made opening/expanding a
+    // large offline library quadratic on the UI thread.
+    val historyBySongId = remember(historyEntries) {
+        historyEntries.mapNotNull { entry ->
+            entry.songId?.let { it to entry }
+        }.toMap()
+    }
+    val favouritesBySongId = remember(favSongs) {
+        favSongs.associateBy { it.id }
+    }
+
     // Squidify tracks downloaded before v1.7.0 carry no cover URL in the
     // persisted job — recover the art id from the local listening history or
     // favourites (both store coverArtId/albumId per song id).
     fun metaFor(job: DownloadJob): Pair<String?, String?> {
         if (job.source != DownloadSource.SQUIDIFY) return null to null
         val id = job.songId ?: return null to job.albumId
-        val h: HistoryEntry? = historyEntries.firstOrNull { it.songId == id }
-        val f: FavSong? = favSongs.firstOrNull { it.id == id }
+        val h: HistoryEntry? = historyBySongId[id]
+        val f: FavSong? = favouritesBySongId[id]
         val coverArtId = if (job.coverUrl != null) null else {
             h?.coverArtId ?: f?.coverArtId
                 ?: h?.albumId?.let { "al-$it" } ?: f?.albumId?.let { "al-$it" }
@@ -141,13 +153,15 @@ fun DownloadsScreen() {
     }
 
     // The library: downloaded albums enriched with a persisted full tracklist.
-    val cachedByKey = cachedAlbums.associateBy {
-        downloadAlbumKey(
-            it.albumName,
-            it.artist,
-            it.source,
-            if (it.source == DownloadSource.SQUIDIFY) it.albumId else it.albumUrl,
-        )
+    val cachedByKey = remember(cachedAlbums) {
+        cachedAlbums.associateBy {
+            downloadAlbumKey(
+                it.albumName,
+                it.artist,
+                it.source,
+                if (it.source == DownloadSource.SQUIDIFY) it.albumId else it.albumUrl,
+            )
+        }
     }
 
     data class AlbumGroup(
@@ -160,23 +174,25 @@ fun DownloadsScreen() {
         val snapshot: OfflineAlbumSnapshot?,
     )
 
-    val groups = done
-        .groupBy { job -> downloadJobAlbumKey(job, metaFor(job).second) }
-        .map { (key, list) ->
-            val snapshot = cachedByKey[key]
-            AlbumGroup(
-                key = key,
-                name = key.albumName,
-                coverUrl = snapshot?.coverUrl ?: list.firstNotNullOfOrNull { coverFor(it) },
-                artist = snapshot?.artist ?: list.firstNotNullOfOrNull { it.artist },
-                jobs = list.sortedWith(
-                    compareBy({ trackNumberFromFileName(it.fileName) }, { it.title }),
-                ),
-                totalBytes = list.sumOf { it.totalBytes },
-                snapshot = snapshot,
-            )
-        }
-        .sortedByDescending { g -> g.jobs.maxOf { it.completedAt ?: it.createdAt } }
+    val groups = remember(done, historyBySongId, favouritesBySongId, cachedByKey) {
+        done
+            .groupBy { job -> downloadJobAlbumKey(job, metaFor(job).second) }
+            .map { (key, list) ->
+                val snapshot = cachedByKey[key]
+                AlbumGroup(
+                    key = key,
+                    name = key.albumName,
+                    coverUrl = snapshot?.coverUrl ?: list.firstNotNullOfOrNull { coverFor(it) },
+                    artist = snapshot?.artist ?: list.firstNotNullOfOrNull { it.artist },
+                    jobs = list.sortedWith(
+                        compareBy({ trackNumberFromFileName(it.fileName) }, { it.title }),
+                    ),
+                    totalBytes = list.sumOf { it.totalBytes },
+                    snapshot = snapshot,
+                )
+            }
+            .sortedByDescending { g -> g.jobs.maxOf { it.completedAt ?: it.createdAt } }
+    }
 
     var expandedAlbum by remember { mutableStateOf<DownloadAlbumKey?>(null) }
 
