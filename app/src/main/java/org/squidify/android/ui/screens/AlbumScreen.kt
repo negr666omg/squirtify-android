@@ -47,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -156,42 +157,51 @@ fun AlbumScreen(
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 140.dp),
                 ) {
                     item {
-                        Row(
+                        Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp),
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            shape = RoundedCornerShape(36.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
                         ) {
-                            CoverArt(
-                                // 600px — plenty for a 170dp header and the
-                                // SAME asset the lists already cached; the
-                                // original (size=0) re-downloaded megabytes
-                                // of artwork on every album open
-                                url = a.coverArtUrl(600),
+                            Column(
                                 modifier = Modifier
-                                    .size(170.dp)
-                                    .aspectRatio(1f)
-                                    .clip(RoundedCornerShape(24.dp))
-                                    .clickable { showCoverViewer = true },
-                                corner = 24.dp,
-                                contentDescription = a.name,
-                            )
-                            Spacer(Modifier.width(16.dp))
-                            Column(Modifier.weight(1f)) {
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 18.dp, vertical = 20.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                CoverArt(
+                                    url = a.coverArtUrl(600),
+                                    modifier = Modifier
+                                        .size(216.dp)
+                                        .clickable { showCoverViewer = true },
+                                    corner = 32.dp,
+                                    contentDescription = a.name,
+                                )
+                                Spacer(Modifier.height(16.dp))
+                                Text(
+                                    text = "ALBUM",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                )
+                                Spacer(Modifier.height(4.dp))
                                 Text(
                                     text = a.name,
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    color = MaterialTheme.colorScheme.onBackground,
-                                    maxLines = 3,
+                                    style = MaterialTheme.typography.headlineLarge,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
                                     text = a.artist ?: "",
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.primary,
+                                    textAlign = TextAlign.Center,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier
-                                        .padding(top = 4.dp)
+                                        .padding(top = 5.dp)
                                         .clickable { a.artistId?.let(onArtistClick) },
                                 )
                                 Spacer(Modifier.height(8.dp))
@@ -204,8 +214,8 @@ fun AlbumScreen(
                                     ).joinToString(" · "),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
                                 )
-
                             }
                         }
                         Row(

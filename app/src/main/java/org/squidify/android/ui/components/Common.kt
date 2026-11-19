@@ -214,17 +214,17 @@ fun AlbumCard(
             // (which also clips its artwork) during horizontal list scrolling.
             .background(
                 MaterialTheme.colorScheme.surfaceContainerLow,
-                RoundedCornerShape(18.dp),
+                RoundedCornerShape(26.dp),
             )
             .clickable(onClick = onClick)
-            .padding(8.dp),
+            .padding(10.dp),
     ) {
         CoverArt(
             url = coverUrl,
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f),
-            corner = 10.dp,
+            corner = 20.dp,
             contentDescription = album.name,
         )
         Spacer(Modifier.height(8.dp))
@@ -363,8 +363,8 @@ fun SongRow(
                 // Keep the selected track capsule aligned with the mini-player edges.
                 .then(
                     if (isCurrent) Modifier.background(
-                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.52f),
-                        shape = RoundedCornerShape(18.dp),
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f),
+                        shape = RoundedCornerShape(22.dp),
                     ) else Modifier,
                 )
                 .then(
@@ -374,7 +374,7 @@ fun SongRow(
                         Modifier.clickable(onClick = onClick)
                     },
                 )
-                .padding(horizontal = 14.dp, vertical = 8.dp),
+                .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
         if (index != null && showIndex) {
@@ -390,8 +390,8 @@ fun SongRow(
         if (showCover) {
             CoverArt(
                 url = coverUrl,
-                modifier = Modifier.size(48.dp),
-                corner = 6.dp,
+                modifier = Modifier.size(56.dp),
+                corner = 16.dp,
                 contentDescription = song.album,
             )
             Spacer(Modifier.width(12.dp))
@@ -399,8 +399,8 @@ fun SongRow(
         Column(Modifier.weight(1f)) {
             Text(
                 text = song.title,
-                style = MaterialTheme.typography.titleSmall,
-                color = if (isCurrent) MaterialTheme.colorScheme.primary
+                style = MaterialTheme.typography.titleMedium,
+                color = if (isCurrent) MaterialTheme.colorScheme.onPrimaryContainer
                 else MaterialTheme.colorScheme.onBackground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

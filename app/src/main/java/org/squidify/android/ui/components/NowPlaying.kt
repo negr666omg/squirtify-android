@@ -216,15 +216,21 @@ fun NowPlayingScreen(
                 // Keep the tab group geometrically centered in the screen.
                 // The close button is overlaid at the start and no longer
                 // shifts Lyrics / Up Next to the right.
-                Row(
+                Surface(
                     modifier = Modifier.align(Alignment.Center),
-                    verticalAlignment = Alignment.CenterVertically,
+                    shape = RoundedCornerShape(28.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 ) {
-                    TabPill("Playing", tab == 0) { tab = 0 }
-                    Spacer(Modifier.width(6.dp))
-                    TabPill("Lyrics", tab == 1) { tab = 1 }
-                    Spacer(Modifier.width(6.dp))
-                    TabPill("Up Next", tab == 2) { tab = 2 }
+                    Row(
+                        modifier = Modifier.padding(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TabPill("Playing", tab == 0) { tab = 0 }
+                        Spacer(Modifier.width(3.dp))
+                        TabPill("Lyrics", tab == 1) { tab = 1 }
+                        Spacer(Modifier.width(3.dp))
+                        TabPill("Up Next", tab == 2) { tab = 2 }
+                    }
                 }
                 IconButton(
                     modifier = Modifier.align(Alignment.CenterStart),
@@ -428,8 +434,8 @@ private fun LyricsProviderSelector(
 private fun TabPill(label: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(50),
-        color = if (selected) MaterialTheme.colorScheme.secondaryContainer
-        else MaterialTheme.colorScheme.surfaceVariant,
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer
+        else Color.Transparent,
         // M3 press physics: the pill shrinks under the finger and springs back
         modifier = Modifier.bouncyClickable(pressedScale = 0.93f) {
             AppLog.d("UI", "Now Playing tab → $label")
@@ -439,9 +445,9 @@ private fun TabPill(label: String, selected: Boolean, onClick: () -> Unit) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
-            color = if (selected) MaterialTheme.colorScheme.onSecondaryContainer
+            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
             else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
         )
     }
 }
@@ -534,7 +540,7 @@ private fun PlayingTab(
                 Box(
                     modifier = Modifier
                         .size(side)
-                        .clip(RoundedCornerShape(26.dp))
+                        .clip(RoundedCornerShape(36.dp))
                         .clickable(onClick = onCoverTap),
                 ) {
                     CoverArt(
@@ -544,7 +550,7 @@ private fun PlayingTab(
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer { alpha = pulseAlpha?.value ?: 1f },
-                        corner = 26.dp,
+                        corner = 36.dp,
                         contentDescription = current.album,
                     )
                 }
@@ -555,7 +561,7 @@ private fun PlayingTab(
 
         Text(
             text = current.title,
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.headlineLarge,
             color = MaterialTheme.colorScheme.onBackground,
             textAlign = TextAlign.Start,
             maxLines = 2,
@@ -707,11 +713,16 @@ private fun PlayingTab(
                 .padding(bottom = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onToggleShuffle, modifier = Modifier.weight(1f)) {
+            IconButton(
+                onClick = onToggleShuffle,
+                modifier = Modifier.weight(1f).clip(CircleShape).background(
+                    if (shuffle) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                ),
+            ) {
                 Icon(
                     imageVector = SqIcons.Shuffle,
                     contentDescription = "Shuffle",
-                    tint = if (shuffle) MaterialTheme.colorScheme.primary
+                    tint = if (shuffle) MaterialTheme.colorScheme.onSecondaryContainer
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -730,9 +741,16 @@ private fun PlayingTab(
             Spacer(Modifier.width(8.dp))
             Box(
                 modifier = Modifier
-                    .size(72.dp)
+                    .size(78.dp)
                     .pressScale(playIsr, pressedScale = 0.90f)
-                    .clip(RoundedCornerShape(playCorner))
+                    .clip(
+                        RoundedCornerShape(
+                            topStart = playCorner,
+                            topEnd = 36.dp,
+                            bottomEnd = playCorner,
+                            bottomStart = 36.dp,
+                        ),
+                    )
                     .background(MaterialTheme.colorScheme.primary)
                     .clickable(interactionSource = playIsr, indication = androidx.compose.material3.ripple(), onClick = onTogglePlay),
                 contentAlignment = Alignment.Center,
@@ -773,7 +791,12 @@ private fun PlayingTab(
                     modifier = Modifier.size(40.dp),
                 )
             }
-            IconButton(onClick = onCycleRepeat, modifier = Modifier.weight(1f)) {
+            IconButton(
+                onClick = onCycleRepeat,
+                modifier = Modifier.weight(1f).clip(CircleShape).background(
+                    if (repeatMode != 0) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                ),
+            ) {
                 // Player.REPEAT_MODE_ONE = 1, Player.REPEAT_MODE_ALL = 2
                 val icon = when (repeatMode) {
                     1 -> SqIcons.RepeatOne
@@ -788,7 +811,7 @@ private fun PlayingTab(
                         3 -> "Repeat queue"
                         else -> "Repeat off"
                     },
-                    tint = if (repeatMode != 0) MaterialTheme.colorScheme.primary
+                    tint = if (repeatMode != 0) MaterialTheme.colorScheme.onSecondaryContainer
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

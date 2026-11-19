@@ -3,6 +3,9 @@
 package org.squidify.android.ui.nav
 
 import android.net.Uri
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -23,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -38,6 +42,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -169,10 +174,10 @@ fun AppNavHost(onExitApp: () -> Unit) {
             containerColor = MaterialTheme.colorScheme.background,
             bottomBar = {
                 Surface(
-                    shape = RoundedCornerShape(24.dp),
+                    shape = RoundedCornerShape(32.dp),
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    tonalElevation = 2.dp,
-                    shadowElevation = 4.dp,
+                    tonalElevation = 3.dp,
+                    shadowElevation = 3.dp,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 12.dp, top = 4.dp, end = 12.dp)
@@ -190,26 +195,29 @@ fun AppNavHost(onExitApp: () -> Unit) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(56.dp)
-                                .padding(horizontal = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
+                                .height(68.dp)
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                         ) {
                             destinations.forEach { dest ->
                                 val selected = currentRoute == dest.route
-                                Box(
+                                Surface(
+                                    shape = RoundedCornerShape(24.dp),
+                                    color = if (selected) MaterialTheme.colorScheme.primaryContainer
+                                    else Color.Transparent,
                                     modifier = Modifier
-                                        .size(44.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            if (selected) MaterialTheme.colorScheme.secondaryContainer
-                                            else androidx.compose.ui.graphics.Color.Transparent,
+                                        .weight(if (selected) 1.8f else 1f)
+                                        .clip(RoundedCornerShape(24.dp))
+                                        .animateContentSize(
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                stiffness = Spring.StiffnessMediumLow,
+                                            ),
                                         )
                                         .clickable {
                                             if (currentRoute != dest.route) {
-                                                // Keep top-level destinations in the real back stack.
-                                                // This makes Home -> Downloads -> Settings -> Back
-                                                // return to Downloads instead of jumping to Home.
+                                                // Preserve the top-level back stack.
                                                 val returnedToExisting = navController.popBackStack(
                                                     dest.route,
                                                     inclusive = false,
@@ -221,15 +229,33 @@ fun AppNavHost(onExitApp: () -> Unit) {
                                                 }
                                             }
                                         },
-                                    contentAlignment = androidx.compose.ui.Alignment.Center,
                                 ) {
-                                    Icon(
-                                        imageVector = dest.icon,
-                                        contentDescription = dest.label,
-                                        tint = if (selected) MaterialTheme.colorScheme.onSecondaryContainer
-                                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(24.dp),
-                                    )
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(48.dp)
+                                            .padding(horizontal = if (selected) 10.dp else 0.dp),
+                                        horizontalArrangement = if (selected) Arrangement.Start else Arrangement.Center,
+                                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                                    ) {
+                                        Icon(
+                                            imageVector = dest.icon,
+                                            contentDescription = dest.label,
+                                            tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(22.dp),
+                                        )
+                                        if (selected) {
+                                            androidx.compose.foundation.layout.Spacer(Modifier.width(7.dp))
+                                            Text(
+                                                text = dest.label,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
