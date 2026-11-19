@@ -140,12 +140,13 @@ class DownloadManager(
     private fun finishedFileFor(job: DownloadJob): File? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             val album = UserStorage.sanitizeSegment(job.album ?: job.artist ?: "Unknown Album")
-            val publicDir = File(
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC),
-                "Squirtify/Downloads/" + album,
-            )
-            val publicFile = File(publicDir, job.fileName)
-            if (publicFile.isFile && publicFile.length() > 0L) return publicFile
+            val musicRoot = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
+            // Keep Android 8/9 downloads from earlier versions playable after
+            // the visible folder was renamed from Squidify to Squirtify.
+            for (rootName in listOf("Squirtify", "Squidify")) {
+                val publicFile = File(File(musicRoot, "$rootName/Downloads/$album"), job.fileName)
+                if (publicFile.isFile && publicFile.length() > 0L) return publicFile
+            }
         }
         return File(storage.legacyDir(), job.fileName)
             .takeIf { it.isFile && it.length() > 0L }
@@ -622,10 +623,15 @@ class DownloadManager(
     }
 
     fun storageUsedBytes(): Long {
-        // finished jobs carry their final size; plus anything in the legacy dir
-        var total = _jobs.value.filter { it.status == DownloadStatus.DONE }.sumOf { it.totalBytes }
-        total += storage.legacyDir().listFiles()?.sumOf { it.length() } ?: 0L
-        return total
+        // Jobs published into the app-private legacy directory already exist
+        // on disk, so don't count their recorded size a second time.
+        val completed = _jobs.value.filter { it.status == DownloadStatus.DONE }
+        val legacyFiles = storage.legacyDir().listFiles()?.filter { it.isFile }.orEmpty()
+        val legacyNames = legacyFiles.mapTo(mutableSetOf()) { it.name }
+        val registeredBytes = completed
+            .filterNot { it.fileName in legacyNames }
+            .sumOf { it.totalBytes }
+        return registeredBytes + legacyFiles.sumOf { it.length() }
     }
 
     // ---------------------------------------------------------------- workers

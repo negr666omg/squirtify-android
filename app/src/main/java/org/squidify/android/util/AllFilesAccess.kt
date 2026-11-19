@@ -33,7 +33,8 @@ object AllFilesAccess {
         val legacy = File(volume, "Squidify")
         val current = File(volume, ROOT_NAME)
         if (!legacy.isDirectory) return false
-        if (!current.exists()) return legacy.renameTo(current)
+        if (!current.exists() && legacy.renameTo(current)) return true
+        if (!current.exists() && !current.mkdirs()) return false
 
         fun merge(source: File, destination: File): Boolean {
             if (!source.isDirectory || (!destination.exists() && !destination.mkdirs()) ||
