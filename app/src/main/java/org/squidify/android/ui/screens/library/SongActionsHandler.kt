@@ -39,6 +39,8 @@ class SongActionsHandler(
     private var downloadOverride by mutableStateOf<(() -> Unit)?>(null)
 
     fun show(s: Song, index: Int = -1, playerSong: PlayerSong? = null, onDownload: (() -> Unit)? = null) {
+        showPlaylistDialog = false
+        showQualityDialog = false
         song = s
         songIndex = index
         playerSongOverride = playerSong
@@ -49,6 +51,7 @@ class SongActionsHandler(
         song = null
         songIndex = -1
         showPlaylistDialog = false
+        showQualityDialog = false
         playerSongOverride = null
         downloadOverride = null
     }
