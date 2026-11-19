@@ -66,7 +66,9 @@ fun HomeScreen(
     val error = feed.error
 
     // Recently played is a track shelf, not an album-grouped history shelf.
-    val localRecent = remember(history) { history.distinctBy { it.songId }.take(20) }
+    val localRecent = remember(history) {
+        history.distinctBy { "${it.source.name}:${it.songId}" }.take(20)
+    }
     val recentSongs = remember(localRecent) { localRecent.map { it.toPlayerSong() } }
 
     LazyColumn(

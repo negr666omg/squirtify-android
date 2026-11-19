@@ -107,7 +107,7 @@ class ListenHistory(
     /** Records a played track; consecutive repeats collapse into one entry. */
     fun record(song: PlayerSong) {
         val last = _entries.value.firstOrNull()
-        if (last != null && last.songId == song.id) {
+        if (last != null && last.songId == song.id && last.source == song.source) {
             // refresh the existing entry instead of duplicating it
             val updated = HistoryEntry.from(song, System.currentTimeMillis())
             _entries.value = listOf(updated) + _entries.value.drop(1)

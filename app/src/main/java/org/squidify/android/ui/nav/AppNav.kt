@@ -4,10 +4,6 @@ package org.squidify.android.ui.nav
 
 import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
@@ -100,11 +96,6 @@ private data class BottomDest(
     val label: String,
     val icon: androidx.compose.ui.graphics.vector.ImageVector,
 )
-
-/** Material 3 fade-through: quick fade out, fade + scale in. */
-private val NavEnterTransition: androidx.compose.animation.EnterTransition =
-    fadeIn(tween(90)) + scaleIn(tween(90), initialScale = 0.96f)
-private val NavExitTransition: androidx.compose.animation.ExitTransition = fadeOut(tween(70))
 
 @Composable
 fun AppNavHost(onExitApp: () -> Unit) {
@@ -259,10 +250,12 @@ fun AppNavHost(onExitApp: () -> Unit) {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
-                enterTransition = { NavEnterTransition },
-                exitTransition = { NavExitTransition },
-                popEnterTransition = { NavEnterTransition },
-                popExitTransition = { NavExitTransition },
+                // Keep destination changes free of app-invented scale/fade
+                // motion; Android's own back handling remains with Navigation.
+                enterTransition = { androidx.compose.animation.EnterTransition.None },
+                exitTransition = { androidx.compose.animation.ExitTransition.None },
+                popEnterTransition = { androidx.compose.animation.EnterTransition.None },
+                popExitTransition = { androidx.compose.animation.ExitTransition.None },
             ) {
                 composable(Routes.HOME) {
                     HomeScreen(
