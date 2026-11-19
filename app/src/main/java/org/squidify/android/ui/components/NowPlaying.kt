@@ -775,14 +775,14 @@ private fun PlayingTab(
                 // Player.REPEAT_MODE_ONE = 1, Player.REPEAT_MODE_ALL = 2
                 val icon = when (repeatMode) {
                     1 -> SqIcons.RepeatOne
-                    2 -> SqIcons.Repeat
                     else -> SqIcons.Repeat
                 }
                 Icon(
                     imageVector = icon,
                     contentDescription = when (repeatMode) {
-                        1 -> "Repeat one"
-                        2 -> "Repeat all"
+                        1 -> "Repeat track"
+                        2 -> "Repeat album"
+                        3 -> "Repeat queue"
                         else -> "Repeat off"
                     },
                     tint = if (repeatMode != 0) MaterialTheme.colorScheme.primary
@@ -1208,7 +1208,12 @@ private fun QueueTab(modifier: Modifier = Modifier) {
                 Icon(
                     // Player.REPEAT_MODE_ONE = 1, Player.REPEAT_MODE_ALL = 2
                     imageVector = if (repeatMode == 1) SqIcons.RepeatOne else SqIcons.Repeat,
-                    contentDescription = "Repeat",
+                    contentDescription = when (repeatMode) {
+                        1 -> "Repeat track"
+                        2 -> "Repeat album"
+                        3 -> "Repeat queue"
+                        else -> "Repeat off"
+                    },
                     tint = if (repeatMode != 0) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                 )

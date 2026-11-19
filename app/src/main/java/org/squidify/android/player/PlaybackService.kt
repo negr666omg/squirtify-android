@@ -210,15 +210,16 @@ class PlaybackService : MediaSessionService() {
 
         val repeatButton = CommandButton.Builder(
             when (repeat) {
-                Player.REPEAT_MODE_ONE -> CommandButton.ICON_REPEAT_ONE
-                Player.REPEAT_MODE_ALL -> CommandButton.ICON_REPEAT_ALL
+                PlayerManager.REPEAT_TRACK -> CommandButton.ICON_REPEAT_ONE
+                PlayerManager.REPEAT_ALBUM, PlayerManager.REPEAT_QUEUE -> CommandButton.ICON_REPEAT_ALL
                 else -> CommandButton.ICON_REPEAT_OFF
             },
         )
             .setDisplayName(
                 when (repeat) {
-                    Player.REPEAT_MODE_ONE -> "Repeat: one track"
-                    Player.REPEAT_MODE_ALL -> "Repeat: all"
+                    PlayerManager.REPEAT_TRACK -> "Repeat: track"
+                    PlayerManager.REPEAT_ALBUM -> "Repeat: album"
+                    PlayerManager.REPEAT_QUEUE -> "Repeat: queue"
                     else -> "Repeat: off"
                 },
             )
@@ -271,13 +272,7 @@ class PlaybackService : MediaSessionService() {
                 }
 
                 ACTION_CYCLE_REPEAT -> {
-                    val player = App.graph().player
-                    val next = when (player.repeatMode.value) {
-                        Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
-                        Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
-                        else -> Player.REPEAT_MODE_OFF
-                    }
-                    player.setRepeatMode(next)
+                    App.graph().player.cycleRepeat()
                     AppLog.i(TAG, "Shade: repeat mode cycled")
                     refreshMediaButtonPreferences()
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
