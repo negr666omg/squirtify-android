@@ -6,8 +6,6 @@ import android.content.Intent
 import android.net.Uri
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -294,6 +292,7 @@ fun NowPlayingScreen(
                     playbackTempo = settings.playbackTempo,
                     isHearted = isHearted,
                     scrollingText = settings.scrollingText,
+                    twoLineTitle = settings.nowPlayingTitleTwoLines,
                     hideArtist = settings.hideNowPlayingArtist,
                     onTogglePlay = {
                         if (settings.hapticsEnabled) hapticView.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
@@ -467,6 +466,7 @@ private fun PlayingTab(
     playbackTempo: Float,
     isHearted: Boolean,
     scrollingText: Boolean,
+    twoLineTitle: Boolean,
     hideArtist: Boolean,
     onTogglePlay: () -> Unit,
     onPrevious: () -> Unit,
@@ -492,14 +492,6 @@ private fun PlayingTab(
     val playIsr = remember { MutableInteractionSource() }
     val prevIsr = remember { MutableInteractionSource() }
     val nextIsr = remember { MutableInteractionSource() }
-    val playCorner by animateDpAsState(
-        targetValue = if (isPlaying) 20.dp else 36.dp,
-        animationSpec = androidx.compose.animation.core.spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "playButtonShape",
-    )
 
     // Soft breathing dim while the track is still loading — the cover gently
     // darkens and brightens so buffering is obvious without a harsh overlay.
@@ -540,14 +532,7 @@ private fun PlayingTab(
                 Box(
                     modifier = Modifier
                         .size(side)
-                        .clip(
-                            RoundedCornerShape(
-                                topStart = 42.dp,
-                                topEnd = 42.dp,
-                                bottomEnd = 42.dp,
-                                bottomStart = 18.dp,
-                            ),
-                        )
+                        .clip(RoundedCornerShape(26.dp))
                         .clickable(onClick = onCoverTap),
                 ) {
                     CoverArt(
@@ -557,7 +542,7 @@ private fun PlayingTab(
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer { alpha = pulseAlpha?.value ?: 1f },
-                        corner = 40.dp,
+                        corner = 26.dp,
                         contentDescription = current.album,
                     )
                 }
@@ -567,19 +552,11 @@ private fun PlayingTab(
         Spacer(Modifier.height(16.dp))
 
         Text(
-            text = "NOW PLAYING",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 5.dp),
-        )
-        Text(
             text = current.title,
             style = MaterialTheme.typography.headlineLarge,
             color = MaterialTheme.colorScheme.onBackground,
             textAlign = TextAlign.Start,
-            maxLines = 2,
+            maxLines = if (twoLineTitle) 2 else 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .fillMaxWidth()
@@ -725,10 +702,7 @@ private fun PlayingTab(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(34.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                .padding(horizontal = 5.dp, vertical = 4.dp)
-                .padding(bottom = 8.dp),
+                .padding(bottom = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(
@@ -761,14 +735,7 @@ private fun PlayingTab(
                 modifier = Modifier
                     .size(78.dp)
                     .pressScale(playIsr, pressedScale = 0.90f)
-                    .clip(
-                        RoundedCornerShape(
-                            topStart = playCorner,
-                            topEnd = 36.dp,
-                            bottomEnd = playCorner,
-                            bottomStart = 36.dp,
-                        ),
-                    )
+                    .clip(RoundedCornerShape(22.dp))
                     .background(MaterialTheme.colorScheme.primary)
                     .clickable(interactionSource = playIsr, indication = androidx.compose.material3.ripple(), onClick = onTogglePlay),
                 contentAlignment = Alignment.Center,

@@ -3,8 +3,9 @@
 package org.squidify.android.ui.nav
 
 import android.net.Uri
-import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.spring
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
@@ -208,22 +209,41 @@ fun AppNavHost(onExitApp: () -> Unit) {
                         ) {
                             destinations.forEach { dest ->
                                 val selected = currentRoute == dest.route
+                                val animatedWeight by animateFloatAsState(
+                                    targetValue = if (selected) 1.55f else 1f,
+                                    animationSpec = spring(
+                                        dampingRatio = 0.76f,
+                                        stiffness = 520f,
+                                    ),
+                                    label = "navigationItemWeight",
+                                )
+                                val containerColor by animateColorAsState(
+                                    targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer
+                                    else Color.Transparent,
+                                    animationSpec = spring(
+                                        dampingRatio = 0.9f,
+                                        stiffness = 620f,
+                                    ),
+                                    label = "navigationItemColor",
+                                )
+                                val iconColor by animateColorAsState(
+                                    targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    animationSpec = spring(
+                                        dampingRatio = 0.9f,
+                                        stiffness = 620f,
+                                    ),
+                                    label = "navigationIconColor",
+                                )
                                 Surface(
                                     shape = RoundedCornerShape(24.dp),
-                                    color = if (selected) MaterialTheme.colorScheme.primaryContainer
-                                    else Color.Transparent,
+                                    color = containerColor,
                                     modifier = Modifier
-                                        .weight(if (selected) 1.8f else 1f)
+                                        .weight(animatedWeight)
+                                        .height(48.dp)
                                         .clip(RoundedCornerShape(24.dp))
-                                        .animateContentSize(
-                                            animationSpec = spring(
-                                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                                stiffness = Spring.StiffnessMediumLow,
-                                            ),
-                                        )
                                         .clickable {
                                             if (currentRoute != dest.route) {
-                                                // Preserve the top-level back stack.
                                                 val returnedToExisting = navController.popBackStack(
                                                     dest.route,
                                                     inclusive = false,
@@ -237,33 +257,23 @@ fun AppNavHost(onExitApp: () -> Unit) {
                                         },
                                 ) {
                                     Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(48.dp)
-                                            .padding(horizontal = if (selected) 10.dp else 0.dp),
-                                        horizontalArrangement = if (selected) Arrangement.Start else Arrangement.Center,
+                                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                                        horizontalArrangement = Arrangement.Center,
                                         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                                     ) {
                                         Icon(
                                             imageVector = dest.icon,
                                             contentDescription = dest.label,
-                                            tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
-                                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(22.dp),
+                                            tint = iconColor,
+                                            modifier = Modifier.size(24.dp),
                                         )
-                                        if (selected) {
-                                            androidx.compose.foundation.layout.Spacer(Modifier.width(7.dp))
-                                            Text(
-                                                text = dest.label,
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                maxLines = 1,
-                                                softWrap = false,
-                                            )
-                                        }
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            },                            }
                         }
                     }
                 }

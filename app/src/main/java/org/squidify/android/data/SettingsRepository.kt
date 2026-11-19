@@ -40,6 +40,8 @@ data class Settings(
     val exitOnTaskRemoved: Boolean = false,
     /** Hide the artist line on Now Playing and show only the album. */
     val hideNowPlayingArtist: Boolean = true,
+    /** Allow long Now Playing titles to wrap to a second line. */
+    val nowPlayingTitleTwoLines: Boolean = true,
     /** Manual offline mode; automatic network loss is detected separately. */
     val offlineMode: Boolean = false,
     /** Very light feedback on explicit Play/Pause taps; disabled by default. */
@@ -71,6 +73,7 @@ private data class SettingsState(
     val scrollingText: Boolean? = null,
     val exitOnTaskRemoved: Boolean? = null,
     val hideNowPlayingArtist: Boolean? = null,
+    val nowPlayingTitleTwoLines: Boolean? = null,
     val offlineMode: Boolean? = null,
     val hapticsEnabled: Boolean? = null,
     val playbackTempo: Float? = null,
@@ -147,6 +150,7 @@ class SettingsRepository(
         scrollingText = scrollingText ?: defaults.scrollingText,
         exitOnTaskRemoved = exitOnTaskRemoved ?: defaults.exitOnTaskRemoved,
         hideNowPlayingArtist = hideNowPlayingArtist ?: defaults.hideNowPlayingArtist,
+        nowPlayingTitleTwoLines = nowPlayingTitleTwoLines ?: defaults.nowPlayingTitleTwoLines,
         offlineMode = offlineMode ?: defaults.offlineMode,
         hapticsEnabled = hapticsEnabled ?: defaults.hapticsEnabled,
         playbackTempo = (playbackTempo ?: defaults.playbackTempo).takeIf { it.isFinite() }?.coerceIn(0.25f, 4f) ?: 1f,
@@ -190,6 +194,7 @@ class SettingsRepository(
     suspend fun setScrollingText(b: Boolean) = mutate { it.copy(scrollingText = b) }
     suspend fun setExitOnTaskRemoved(b: Boolean) = mutate { it.copy(exitOnTaskRemoved = b) }
     suspend fun setHideNowPlayingArtist(b: Boolean) = mutate { it.copy(hideNowPlayingArtist = b) }
+    suspend fun setNowPlayingTitleTwoLines(b: Boolean) = mutate { it.copy(nowPlayingTitleTwoLines = b) }
     suspend fun setOfflineMode(b: Boolean) = mutate { it.copy(offlineMode = b) }
     suspend fun setHapticsEnabled(b: Boolean) = mutate { it.copy(hapticsEnabled = b) }
     suspend fun setPlaybackRate(tempo: Float, pitch: Float, linked: Boolean) = mutate {

@@ -94,7 +94,7 @@ fun MiniPlayer(
                 CoverArt(
                     url = song.coverArtUrl(),
                     modifier = Modifier.size(50.dp),
-                    corner = 16.dp,
+                    corner = 12.dp,
                     contentDescription = song.album,
                 )
                 Column(
@@ -102,12 +102,6 @@ fun MiniPlayer(
                         .weight(1f)
                         .padding(horizontal = 12.dp),
                 ) {
-                    Text(
-                        text = "NOW PLAYING",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1,
-                    )
                     Text(
                         text = song.title,
                         style = MaterialTheme.typography.titleSmall,

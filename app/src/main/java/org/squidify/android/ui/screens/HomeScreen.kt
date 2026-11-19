@@ -20,10 +20,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.Surface
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -76,10 +72,6 @@ fun HomeScreen(
         history.distinctBy { "${it.source.name}:${it.songId}" }.take(20)
     }
     val recentSongs = remember(localRecent) { localRecent.map { it.toPlayerSong() } }
-    val featuredAlbum = discover?.firstOrNull()
-        ?: community?.firstOrNull()
-        ?: newest?.firstOrNull()
-        ?: frequent?.firstOrNull()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -89,33 +81,16 @@ fun HomeScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .padding(top = 18.dp, bottom = 12.dp),
+                    .padding(horizontal = 18.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = "YOUR PERSONAL SOUNDTRACK",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Text(
-                        text = "Your music.",
-                        style = MaterialTheme.typography.displaySmall,
-                        color = MaterialTheme.colorScheme.onBackground,
-                    )
-                    Text(
-                        text = "Picked for the way you listen.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Spacer(Modifier.weight(1f))
                 Surface(
                     shape = RoundedCornerShape(24.dp),
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 ) {
                     Row(
-                        modifier = Modifier.padding(start = 10.dp, end = 4.dp),
+                        modifier = Modifier.padding(start = 12.dp, end = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
@@ -129,7 +104,6 @@ fun HomeScreen(
                             onCheckedChange = { enabled ->
                                 scope.launch { graph.settings.setOfflineMode(enabled) }
                             },
-                            modifier = Modifier.padding(start = 2.dp),
                         )
                     }
                 }
@@ -139,82 +113,7 @@ fun HomeScreen(
         if (error != null) {
             item { ErrorRetry("Couldn't reach the library.\n${error}") { HomeFeedCache.reload(graph.scope, subsonic) } }
         } else {
-            if (featuredAlbum != null) {
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                    ) {
-                        Text(
-                            text = "SPOTLIGHT",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.tertiary,
-                            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
-                        )
-                        Surface(
-                            shape = RoundedCornerShape(
-                                topStart = 36.dp,
-                                topEnd = 36.dp,
-                                bottomEnd = 36.dp,
-                                bottomStart = 18.dp,
-                            ),
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                CoverArt(
-                                    url = featuredAlbum.coverArtUrl(600),
-                                    modifier = Modifier.size(128.dp),
-                                    corner = 28.dp,
-                                    contentDescription = featuredAlbum.name,
-                                )
-                                Column(
-                                    modifier = Modifier.weight(1f).padding(start = 14.dp),
-                                    verticalArrangement = Arrangement.Center,
-                                ) {
-                                    Text(
-                                        text = "ALBUM TO EXPLORE",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                    )
-                                    Spacer(Modifier.height(5.dp))
-                                    Text(
-                                        text = featuredAlbum.name,
-                                        style = MaterialTheme.typography.titleLarge,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 2,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                    )
-                                    Text(
-                                        text = featuredAlbum.artist ?: "From your library",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                    )
-                                    Spacer(Modifier.height(10.dp))
-                                    FilledTonalButton(
-                                        onClick = { onAlbumClick(featuredAlbum) },
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                                            horizontal = 12.dp,
-                                            vertical = 7.dp,
-                                        ),
-                                    ) {
-                                        Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                                        Spacer(Modifier.width(6.dp))
-                                        Text("Explore")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            // ---------- this device
+             // ---------- this device
             if (localRecent.isNotEmpty()) {
                 item {
                     Column {

@@ -102,28 +102,12 @@ fun SettingsScreen() {
     }
 
     Column(Modifier.fillMaxSize()) {
-        // ---------- header with tabs
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-        ) {
-            Text(
-                text = "MAKE IT YOURS",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                text = "Make it yours.",
-                style = MaterialTheme.typography.displaySmall,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
-            Text(
-                text = "Fine-tune your listening experience.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        Text(
+            text = "Settings",
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+        )
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -152,6 +136,7 @@ fun SettingsScreen() {
                 onDynamicColor = { on -> scope.launch { graph.settings.setDynamicColor(on) } },
                 onScrollingText = { on -> scope.launch { graph.settings.setScrollingText(on) } },
                 onHideNowPlayingArtist = { on -> scope.launch { graph.settings.setHideNowPlayingArtist(on) } },
+                onNowPlayingTitleTwoLines = { on -> scope.launch { graph.settings.setNowPlayingTitleTwoLines(on) } },
                 onExitOnTaskRemoved = { on -> scope.launch { graph.settings.setExitOnTaskRemoved(on) } },
                 onCrossfade = { sec -> scope.launch { graph.settings.setCrossfadeSec(sec) } },
                 onCrossfadeRepeatLoops = { on -> scope.launch { graph.settings.setCrossfadeRepeatLoops(on) } },
@@ -196,6 +181,7 @@ private fun GeneralSettings(
     onDynamicColor: (Boolean) -> Unit,
     onScrollingText: (Boolean) -> Unit,
     onHideNowPlayingArtist: (Boolean) -> Unit,
+    onNowPlayingTitleTwoLines: (Boolean) -> Unit,
     onExitOnTaskRemoved: (Boolean) -> Unit,
     onCrossfade: (Int) -> Unit,
     onCrossfadeRepeatLoops: (Boolean) -> Unit,
@@ -349,6 +335,11 @@ private fun GeneralSettings(
                     title = "Hide artist in Now Playing",
                     checked = settings.hideNowPlayingArtist,
                     onChange = onHideNowPlayingArtist,
+                )
+                SwitchRow(
+                    title = "Wrap long Now Playing titles",
+                    checked = settings.nowPlayingTitleTwoLines,
+                    onChange = onNowPlayingTitleTwoLines,
                 )
                 SwitchRow(
                     title = "Play/Pause haptics",
