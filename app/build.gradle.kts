@@ -45,7 +45,13 @@ android {
         release {
             isMinifyEnabled = false
             isShrinkResources = false
-            if (keystoreFile.exists()) signingConfig = signingConfigs.getByName("release")
+            // Prefer the production keystore when present. CI has no private key,
+            // so fall back to the standard debug key to keep the Release APK installable.
+            signingConfig = if (keystoreFile.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
         debug {
             applicationIdSuffix = ".debug"
