@@ -2111,7 +2111,8 @@ class PlayerManager(
                     put("album", song.album)
                     put("durationMs", song.durationMs)
                     put("coverArtId", song.coverArtId)
-                    put("coverUrl", song.coverUrl)
+                    // Do not persist cover URLs: some providers embed auth
+                    // query parameters. Stable artwork IDs are sufficient.
                     put("source", song.source.name)
                     put("albumId", song.albumId)
                     put("artistId", song.artistId)
@@ -2164,7 +2165,7 @@ class PlayerManager(
                     album = item.optString("album").takeIf { it.isNotBlank() },
                     durationMs = item.optLong("durationMs").coerceAtLeast(0L),
                     coverArtId = item.optString("coverArtId").takeIf { it.isNotBlank() },
-                    coverUrl = item.optString("coverUrl").takeIf { it.isNotBlank() },
+                    coverUrl = null,
                     source = source,
                     albumId = item.optString("albumId").takeIf { it.isNotBlank() },
                     artistId = item.optString("artistId").takeIf { it.isNotBlank() },
