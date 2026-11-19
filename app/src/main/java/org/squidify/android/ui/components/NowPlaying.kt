@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -1347,7 +1348,7 @@ private fun QueueTab(modifier: Modifier = Modifier) {
 
 private fun Float.formatRate(): String = "%.2f".format(java.util.Locale.US, this)
 
-/** Gramophone-inspired rate controls with exact decimal entry and linked pitch/tempo. */
+/** Gramophone-inspired rate controls; tap a value to enter an exact decimal. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PlaybackRateSheet(onDismiss: () -> Unit) {
@@ -1356,15 +1357,14 @@ private fun PlaybackRateSheet(onDismiss: () -> Unit) {
     var tempo by remember { mutableStateOf(settings.playbackTempo) }
     var pitch by remember { mutableStateOf(settings.playbackPitch) }
     var linked by remember { mutableStateOf(settings.playbackRateLinked) }
-    var tempoText by remember { mutableStateOf(settings.playbackTempo.formatRate()) }
-    var pitchText by remember { mutableStateOf(settings.playbackPitch.formatRate()) }
+    var editTarget by remember { mutableStateOf<String?>(null) }
+    var exactInput by remember { mutableStateOf("") }
+    var exactInputError by remember { mutableStateOf(false) }
 
     fun apply(nextTempo: Float, nextPitch: Float, nextLinked: Boolean) {
         tempo = nextTempo
         pitch = if (nextLinked) nextTempo else nextPitch
         linked = nextLinked
-        tempoText = tempo.formatRate()
-        pitchText = pitch.formatRate()
         graph.player.setPlaybackRate(tempo, pitch, linked)
     }
 
@@ -1397,7 +1397,11 @@ private fun PlaybackRateSheet(onDismiss: () -> Unit) {
                     )
                 }
             }
-            Text(if (linked) "Tempo & pitch" else "Tempo", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
+            Text(
+                if (linked) "Tempo & pitch" else "Tempo",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(top = 12.dp),
+            )
             Slider(
                 value = tempo.coerceIn(0.25f, 4f),
                 onValueChange = { apply(it, if (linked) it else pitch, linked) },
@@ -1406,19 +1410,18 @@ private fun PlaybackRateSheet(onDismiss: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("0.25×", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.weight(1f))
-                Text("${tempo.formatRate()}×", style = MaterialTheme.typography.titleMedium)
+                TextButton(
+                    onClick = {
+                        editTarget = "tempo"
+                        exactInput = tempo.formatRate()
+                        exactInputError = false
+                    },
+                ) {
+                    Text("${tempo.formatRate()}×", style = MaterialTheme.typography.titleMedium)
+                }
                 Spacer(Modifier.weight(1f))
                 Text("4.00×", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
             }
-            OutlinedTextField(
-                value = tempoText,
-                onValueChange = { tempoText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                label = { Text(if (linked) "Exact tempo & pitch" else "Exact tempo") },
-                suffix = { Text("×") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
-                modifier = Modifier.fillMaxWidth(),
-            )
             if (!linked) {
                 Text("Pitch", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
                 Slider(
@@ -1426,33 +1429,84 @@ private fun PlaybackRateSheet(onDismiss: () -> Unit) {
                     onValueChange = { apply(tempo, it, false) },
                     valueRange = 0.25f..4f,
                 )
-                OutlinedTextField(
-                    value = pitchText,
-                    onValueChange = { pitchText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
-                    label = { Text("Exact pitch") },
-                    suffix = { Text("×") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            TextButton(
-                onClick = {
-                    val exactTempo = tempoText.replace(',', '.').toFloatOrNull()
-                    val exactPitch = if (linked) exactTempo else pitchText.replace(',', '.').toFloatOrNull()
-                    if (exactTempo != null && exactPitch != null && exactTempo.isFinite() && exactPitch.isFinite() &&
-                        exactTempo in 0.25f..4f && exactPitch in 0.25f..4f
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("0.25×", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                    Spacer(Modifier.weight(1f))
+                    TextButton(
+                        onClick = {
+                            editTarget = "pitch"
+                            exactInput = pitch.formatRate()
+                            exactInputError = false
+                        },
                     ) {
-                        apply(exactTempo, exactPitch, linked)
-                        onDismiss()
+                        Text("${pitch.formatRate()}×", style = MaterialTheme.typography.titleMedium)
                     }
-                },
-                modifier = Modifier.align(Alignment.End),
-            ) { Text("Apply exact values") }
+                    Spacer(Modifier.weight(1f))
+                    Text("4.00×", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                }
+            }
             TextButton(
                 onClick = { apply(1f, 1f, linked) },
                 modifier = Modifier.align(Alignment.Start),
             ) { Text("Reset to normal") }
         }
+    }
+
+    val target = editTarget
+    if (target != null) {
+        AlertDialog(
+            onDismissRequest = { editTarget = null },
+            title = {
+                Text(
+                    when (target) {
+                        "tempo" -> if (linked) "Set tempo & pitch" else "Set tempo"
+                        else -> "Set pitch"
+                    },
+                )
+            },
+            text = {
+                OutlinedTextField(
+                    value = exactInput,
+                    onValueChange = {
+                        exactInput = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
+                        exactInputError = false
+                    },
+                    label = { Text("Value") },
+                    suffix = { Text("×") },
+                    singleLine = true,
+                    isError = exactInputError,
+                    supportingText = {
+                        Text(
+                            if (exactInputError) "Enter a value from 0.25 to 4.00."
+                            else "Allowed range: 0.25×–4.00×",
+                        )
+                    },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Done,
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val value = exactInput.replace(',', '.').toFloatOrNull()
+                        if (value != null && value.isFinite() && value in 0.25f..4f) {
+                            if (target == "tempo") {
+                                apply(value, if (linked) value else pitch, linked)
+                            } else {
+                                apply(tempo, value, false)
+                            }
+                            editTarget = null
+                        } else {
+                            exactInputError = true
+                        }
+                    },
+                ) { Text("Apply") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editTarget = null }) { Text("Cancel") }
+            },
+        )
     }
 }
