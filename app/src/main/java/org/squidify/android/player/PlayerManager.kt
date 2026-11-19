@@ -11,6 +11,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSpec
@@ -163,6 +164,7 @@ class PlayerManager(
     private var ticker: Job? = null
     private var scrobbledCurrent = false
     private var saveJob: Job? = null
+    private var playbackRateSaveJob: Job? = null
     private var pendingSwitch: Job? = null
     private var playGeneration = 0L
     private var nextPrefetched = false
@@ -288,6 +290,7 @@ class PlayerManager(
         sessionBoundTo = active
         active.addListener(activeListener)
         standby.addListener(standbyListener)
+        applyPlaybackRateToPlayers()
         _repeatMode.value = active.repeatMode
         AppLog.i(TAG, "Two players attached (active + crossfade standby)")
         scope.launch {
@@ -1195,6 +1198,33 @@ class PlayerManager(
     /** Absolute UI position of the player (window position + offset base). */
     private fun absolutePositionOf(p: Player): Long =
         (timeOffsetBaseMs + p.currentPosition).coerceAtLeast(0)
+
+    // ------------------------------------------------------------ playback rate shift
+
+    private fun applyPlaybackRateToPlayers() {
+        val saved = settings.state().value
+        val parameters = PlaybackParameters(
+            saved.playbackTempo.coerceIn(0.25f, 4f),
+            saved.playbackPitch.coerceIn(0.25f, 4f),
+        )
+        activeP?.setPlaybackParameters(parameters)
+        standbyP?.setPlaybackParameters(parameters)
+    }
+
+    /** Apply immediately to both ExoPlayers; persist after slider input settles. */
+    fun setPlaybackRate(tempo: Float, pitch: Float, linked: Boolean) {
+        val safeTempo = tempo.takeIf { it.isFinite() }?.coerceIn(0.25f, 4f) ?: 1f
+        val safePitch = if (linked) safeTempo else pitch.takeIf { it.isFinite() }?.coerceIn(0.25f, 4f) ?: 1f
+        val parameters = PlaybackParameters(safeTempo, safePitch)
+        activeP?.setPlaybackParameters(parameters)
+        standbyP?.setPlaybackParameters(parameters)
+        playbackRateSaveJob?.cancel()
+        playbackRateSaveJob = scope.launch {
+            delay(350)
+            settings.setPlaybackRate(safeTempo, safePitch, linked)
+        }
+        AppLog.i(TAG, "Playback rate shift: tempo=$safeTempo pitch=$safePitch linked=$linked")
+    }
 
     // ------------------------------------------------------------ shuffle / repeat
 

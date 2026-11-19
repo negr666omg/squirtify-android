@@ -44,6 +44,10 @@ data class Settings(
     val offlineMode: Boolean = false,
     /** Very light feedback on explicit Play/Pause taps; disabled by default. */
     val hapticsEnabled: Boolean = false,
+    /** Playback rate shift: tempo and pitch are linked by default. */
+    val playbackTempo: Float = 1f,
+    val playbackPitch: Float = 1f,
+    val playbackRateLinked: Boolean = true,
 )
 
 @Serializable
@@ -69,6 +73,9 @@ private data class SettingsState(
     val hideNowPlayingArtist: Boolean? = null,
     val offlineMode: Boolean? = null,
     val hapticsEnabled: Boolean? = null,
+    val playbackTempo: Float? = null,
+    val playbackPitch: Float? = null,
+    val playbackRateLinked: Boolean? = null,
 )
 
 /**
@@ -142,6 +149,9 @@ class SettingsRepository(
         hideNowPlayingArtist = hideNowPlayingArtist ?: defaults.hideNowPlayingArtist,
         offlineMode = offlineMode ?: defaults.offlineMode,
         hapticsEnabled = hapticsEnabled ?: defaults.hapticsEnabled,
+        playbackTempo = (playbackTempo ?: defaults.playbackTempo).takeIf { it.isFinite() }?.coerceIn(0.25f, 4f) ?: 1f,
+        playbackPitch = (playbackPitch ?: defaults.playbackPitch).takeIf { it.isFinite() }?.coerceIn(0.25f, 4f) ?: 1f,
+        playbackRateLinked = playbackRateLinked ?: defaults.playbackRateLinked,
     )
 
     @Synchronized
@@ -182,6 +192,11 @@ class SettingsRepository(
     suspend fun setHideNowPlayingArtist(b: Boolean) = mutate { it.copy(hideNowPlayingArtist = b) }
     suspend fun setOfflineMode(b: Boolean) = mutate { it.copy(offlineMode = b) }
     suspend fun setHapticsEnabled(b: Boolean) = mutate { it.copy(hapticsEnabled = b) }
+    suspend fun setPlaybackRate(tempo: Float, pitch: Float, linked: Boolean) = mutate {
+        val safeTempo = tempo.takeIf { it.isFinite() }?.coerceIn(0.25f, 4f) ?: 1f
+        val safePitch = if (linked) safeTempo else pitch.takeIf { it.isFinite() }?.coerceIn(0.25f, 4f) ?: 1f
+        it.copy(playbackTempo = safeTempo, playbackPitch = safePitch, playbackRateLinked = linked)
+    }
 
     // ------------------------------------------------------------ searches
 

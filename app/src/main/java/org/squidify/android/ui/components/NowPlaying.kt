@@ -45,6 +45,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -72,6 +74,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -122,6 +127,7 @@ fun NowPlayingScreen(
     var lyricsLoading by remember { mutableStateOf(false) }
     var lyricsFor by remember { mutableStateOf<String?>(null) }
     var showQualitySheet by remember { mutableStateOf(false) }
+    var showPlaybackRateSheet by remember { mutableStateOf(false) }
     var showCoverViewer by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val settings by graph.settings.state().collectAsState()
@@ -274,6 +280,8 @@ fun NowPlayingScreen(
                     buffering = isBuffering || stalled,
                     shuffle = shuffle,
                     repeatMode = repeatMode,
+                    playbackTempo = settings.playbackTempo,
+                    playbackPitch = settings.playbackPitch,
                     isHearted = isHearted,
                     downloadStatus = downloadStatus,
                     scrollingText = settings.scrollingText,
@@ -287,6 +295,7 @@ fun NowPlayingScreen(
                     onSeek = { player.seekTo(it) },
                     onToggleShuffle = { player.toggleShuffle() },
                     onCycleRepeat = { player.cycleRepeat() },
+                    onPlaybackRateTap = { showPlaybackRateSheet = true },
                     onToggleHeart = { onToggleHeart(current) },
                     onDownload = { onDownload(current) },
                     onQualityTap = { showQualitySheet = true },
@@ -325,6 +334,10 @@ fun NowPlayingScreen(
             downloadStatus = downloadStatus,
             onDismiss = { showQualitySheet = false },
         )
+    }
+
+    if (showPlaybackRateSheet) {
+        PlaybackRateSheet(onDismiss = { showPlaybackRateSheet = false })
     }
 
     if (showCoverViewer) {
@@ -443,6 +456,8 @@ private fun PlayingTab(
     buffering: Boolean,
     shuffle: Boolean,
     repeatMode: Int,
+    playbackTempo: Float,
+    playbackPitch: Float,
     isHearted: Boolean,
     downloadStatus: DownloadStatus?,
     scrollingText: Boolean,
@@ -453,6 +468,7 @@ private fun PlayingTab(
     onSeek: (Long) -> Unit,
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
+    onPlaybackRateTap: () -> Unit,
     onToggleHeart: () -> Unit,
     onDownload: () -> Unit,
     onQualityTap: () -> Unit,
@@ -636,6 +652,18 @@ private fun PlayingTab(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.bouncyClickable(pressedScale = 0.94f, onClick = onPlaybackRateTap),
+            ) {
+                Text(
+                    text = "${playbackTempo.formatRate()}×",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                )
             }
             Spacer(Modifier.weight(1f))
             IconButton(onClick = onToggleHeart) {
@@ -1249,6 +1277,121 @@ private fun QueueTab(modifier: Modifier = Modifier) {
                     }
                 }
             }
+        }
+    }
+}
+
+
+// ---------------------------------------------------------------- playback rate shift
+
+private fun Float.formatRate(): String = "%.2f".format(java.util.Locale.US, this)
+
+/** Gramophone-inspired rate controls with exact decimal entry and linked pitch/tempo. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlaybackRateSheet(onDismiss: () -> Unit) {
+    val graph = App.graph()
+    val settings by graph.settings.state().collectAsState()
+    var tempo by remember { mutableStateOf(settings.playbackTempo) }
+    var pitch by remember { mutableStateOf(settings.playbackPitch) }
+    var linked by remember { mutableStateOf(settings.playbackRateLinked) }
+    var tempoText by remember { mutableStateOf(settings.playbackTempo.formatRate()) }
+    var pitchText by remember { mutableStateOf(settings.playbackPitch.formatRate()) }
+
+    fun apply(nextTempo: Float, nextPitch: Float, nextLinked: Boolean) {
+        tempo = nextTempo
+        pitch = if (nextLinked) nextTempo else nextPitch
+        linked = nextLinked
+        tempoText = tempo.formatRate()
+        pitchText = pitch.formatRate()
+        graph.player.setPlaybackRate(tempo, pitch, linked)
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+        ) {
+            Text("Playback rate shift", style = MaterialTheme.typography.headlineSmall)
+            Text(
+                "Adjust tempo and pitch independently or keep them linked.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp, bottom = 18.dp),
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = linked,
+                    onCheckedChange = { apply(tempo, pitch, it) },
+                )
+                Column(Modifier.weight(1f)) {
+                    Text("Link pitch and tempo", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "When linked, both values change together.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Text(if (linked) "Tempo & pitch" else "Tempo", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
+            Slider(
+                value = tempo.coerceIn(0.25f, 4f),
+                onValueChange = { apply(it, if (linked) it else pitch, linked) },
+                valueRange = 0.25f..4f,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("0.25×", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.weight(1f))
+                Text("${tempo.formatRate()}×", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.weight(1f))
+                Text("4.00×", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+            }
+            OutlinedTextField(
+                value = tempoText,
+                onValueChange = { tempoText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                label = { Text(if (linked) "Exact tempo & pitch" else "Exact tempo") },
+                suffix = { Text("×") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (!linked) {
+                Text("Pitch", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
+                Slider(
+                    value = pitch.coerceIn(0.25f, 4f),
+                    onValueChange = { apply(tempo, it, false) },
+                    valueRange = 0.25f..4f,
+                )
+                OutlinedTextField(
+                    value = pitchText,
+                    onValueChange = { pitchText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' } },
+                    label = { Text("Exact pitch") },
+                    suffix = { Text("×") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            TextButton(
+                onClick = {
+                    val exactTempo = tempoText.replace(',', '.').toFloatOrNull()
+                    val exactPitch = if (linked) exactTempo else pitchText.replace(',', '.').toFloatOrNull()
+                    if (exactTempo != null && exactPitch != null && exactTempo.isFinite() && exactPitch.isFinite() &&
+                        exactTempo in 0.25f..4f && exactPitch in 0.25f..4f
+                    ) {
+                        apply(exactTempo, exactPitch, linked)
+                        onDismiss()
+                    }
+                },
+                modifier = Modifier.align(Alignment.End),
+            ) { Text("Apply exact values") }
+            TextButton(
+                onClick = { apply(1f, 1f, linked) },
+                modifier = Modifier.align(Alignment.Start),
+            ) { Text("Reset to normal") }
         }
     }
 }
