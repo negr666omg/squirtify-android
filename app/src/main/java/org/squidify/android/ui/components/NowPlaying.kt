@@ -4,6 +4,7 @@ package org.squidify.android.ui.components
 
 import android.content.Intent
 import android.net.Uri
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -70,6 +71,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -123,6 +125,7 @@ fun NowPlayingScreen(
     var showCoverViewer by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val settings by graph.settings.state().collectAsState()
+    val hapticView = LocalView.current
 
     val current = queue.getOrNull(idx) ?: run {
         // never leave the overlay "transparent": with an empty queue it must
@@ -275,7 +278,10 @@ fun NowPlayingScreen(
                     downloadStatus = downloadStatus,
                     scrollingText = settings.scrollingText,
                     hideArtist = settings.hideNowPlayingArtist,
-                    onTogglePlay = { player.togglePlayPause() },
+                    onTogglePlay = {
+                        if (settings.hapticsEnabled) hapticView.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        player.togglePlayPause()
+                    },
                     onPrevious = { player.previous() },
                     onNext = { player.next() },
                     onSeek = { player.seekTo(it) },
