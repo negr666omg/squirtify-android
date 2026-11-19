@@ -666,10 +666,16 @@ class DownloadManager(
 
     /** Local playable Uri for a downloaded KHInsider track (matched by track page URL). */
     fun downloadedUriForKhi(trackUrl: String): Uri? {
-        val job = _jobs.value.firstOrNull {
-            it.source == DownloadSource.KHINSIDER && it.kind == "audio" &&
-                it.requestUrl == trackUrl && it.status == DownloadStatus.DONE
-        } ?: return null
+        val job = _jobs.value
+            .filter {
+                it.source == DownloadSource.KHINSIDER && it.kind == "audio" &&
+                    it.requestUrl == trackUrl && it.status == DownloadStatus.DONE
+            }
+            .sortedByDescending(::qualityRank)
+            .firstOrNull { candidate ->
+                (candidate.contentUri != null && storage.documentExists(candidate.contentUri)) ||
+                    finishedFileFor(candidate) != null
+            } ?: return null
         val content = job.contentUri
         if (content != null && storage.documentExists(content)) return Uri.parse(content)
         return finishedFileFor(job)?.let(Uri::fromFile)
