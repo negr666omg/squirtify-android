@@ -2,6 +2,9 @@
 
 package org.squidify.android.ui.screens.library
 
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -37,14 +40,26 @@ class SongActionsHandler(
         private set
     private var playerSongOverride by mutableStateOf<PlayerSong?>(null)
     private var downloadOverride by mutableStateOf<(() -> Unit)?>(null)
+    private var deleteOverride by mutableStateOf<(() -> Boolean)?>(null)
+    private var showDeleteConfirmation by mutableStateOf(false)
+    private var deleteFailed by mutableStateOf(false)
 
-    fun show(s: Song, index: Int = -1, playerSong: PlayerSong? = null, onDownload: (() -> Unit)? = null) {
+    fun show(
+        s: Song,
+        index: Int = -1,
+        playerSong: PlayerSong? = null,
+        onDownload: (() -> Unit)? = null,
+        onDelete: (() -> Boolean)? = null,
+    ) {
         showPlaylistDialog = false
         showQualityDialog = false
         song = s
         songIndex = index
         playerSongOverride = playerSong
         downloadOverride = onDownload
+        deleteOverride = onDelete
+        showDeleteConfirmation = false
+        deleteFailed = false
     }
 
     fun dismiss() {
@@ -54,6 +69,9 @@ class SongActionsHandler(
         showQualityDialog = false
         playerSongOverride = null
         downloadOverride = null
+        deleteOverride = null
+        showDeleteConfirmation = false
+        deleteFailed = false
     }
 
     @Composable
@@ -103,11 +121,40 @@ class SongActionsHandler(
             },
             onAddToPlaylist = { if (supportsPlaylists) showPlaylistDialog = true },
             showAddToPlaylist = supportsPlaylists,
-            extraAction = extraRemove?.let { rm ->
-                "Remove from playlist" to {
-                    scope.launch { rm(s, songIndex) }
+            extraAction = when {
+                deleteOverride != null -> "Delete from device" to {
+                    deleteFailed = false
+                    showDeleteConfirmation = true
                 }
+                extraRemove != null -> "Remove from playlist" to {
+                    scope.launch { extraRemove.invoke(s, songIndex) }
+                }
+                else -> null
             },
         )
+
+        if (showDeleteConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showDeleteConfirmation = false },
+                title = { Text("Delete from device?") },
+                text = {
+                    Text(
+                        if (deleteFailed) "The file could not be deleted. Check storage access and try again."
+                        else "This removes all downloaded quality versions of this track from this device."
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val deleted = deleteOverride?.invoke() == true
+                            if (deleted) dismiss() else deleteFailed = true
+                        },
+                    ) { Text("Delete") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteConfirmation = false }) { Text("Cancel") }
+                },
+            )
+        }
     }
 }
