@@ -90,7 +90,7 @@ class MainActivity : ComponentActivity() {
 
             // "All files access": asked once per launch until granted; when
             // the user flips the switch and returns, data migrates into
-            // Internal storage/Squidify and the repositories reload.
+            // Internal storage/Squirtify and the repositories reload.
             var allFilesGranted by remember { mutableStateOf(AllFilesAccess.isGranted()) }
             var allFilesPromptDismissed by remember { mutableStateOf(false) }
             DisposableEffect(Unit) {
@@ -194,7 +194,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * One-time move of every piece of app data into Internal storage/Squidify
+     * One-time move of every piece of app data into Internal storage/Squirtify
      * after "All files access" is granted (flag-guarded, idempotent).
      */
     private fun ensureAllFilesMigration(showToast: Boolean = false) {
@@ -227,7 +227,7 @@ class MainActivity : ComponentActivity() {
                     if (showToast) {
                         Toast.makeText(
                             this@MainActivity,
-                            "All app data now lives in Internal storage/Squidify",
+                            "All app data now lives in Internal storage/Squirtify",
                             Toast.LENGTH_LONG,
                         ).show()
                     }
@@ -334,12 +334,12 @@ private fun AllFilesAccessDialog(
         text = {
             Text(
                 "Squirtify keeps every piece of its data in one folder you can see: " +
-                    "Internal storage/Squidify —\n" +
+                    "Internal storage/Squirtify —\n" +
                     "Downloads/ (offline music), cache/ (music + covers), logs/, " +
                     "UserData/ (settings, favourites, history).\n\n" +
                     "Android requires the one-time \"All files access\" permission for that. " +
                     "Flip the switch for Squirtify on the next screen. " +
-                    "Nothing outside the Squidify folder is ever touched.",
+                    "Nothing outside the Squirtify folder is ever touched.",
             )
         },
         confirmButton = {

@@ -65,7 +65,7 @@ fun SettingsScreen() {
 
     if (showQualityDialog) {
         RadioDialog(
-            title = "Squidify streaming quality",
+            title = "Squirtify streaming quality",
             options = StreamQuality.entries.map { it.label },
             selected = StreamQuality.entries.indexOf(settings.streamingQuality),
             onDismiss = { showQualityDialog = false },
@@ -227,7 +227,7 @@ private fun GeneralSettings(
             Column(Modifier.padding(16.dp)) {
                 SettingsCardTitle("Audio & quality")
                 ClickableRow(
-                    title = "Streaming quality (Squidify)",
+                    title = "Streaming quality (Squirtify)",
                     value = settings.streamingQuality.label,
                     onClick = {
                         AppLog.d("UI", "Settings: quality picker opened")
@@ -278,7 +278,7 @@ private fun GeneralSettings(
                 Spacer(Modifier.padding(6.dp))
                 ClickableRow(
                     title = "Access to all files",
-                    value = if (allFilesGranted) "Granted ✓ — data in Internal storage/Squidify"
+                    value = if (allFilesGranted) "Granted ✓ — data in Internal storage/Squirtify"
                     else "Not granted — tap to allow",
                     onClick = {
                         AppLog.d("UI", "Settings: opening the all-files-access system screen")
@@ -292,7 +292,7 @@ private fun GeneralSettings(
                     )
                     ClickableRow(
                         title = "Storage folder (fallback)",
-                        value = if (storageGranted) "Squidify folder ✓" else "Not set — default locations",
+                        value = if (storageGranted) "Squirtify folder ✓" else "Not set — default locations",
                         onClick = { treeLauncher.launch(null) },
                     )
                 }

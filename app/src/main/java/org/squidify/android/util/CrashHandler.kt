@@ -12,14 +12,14 @@ import java.util.Locale
  *
  * The very first thing [org.squidify.android.App.onCreate] installs is an
  * uncaught-exception interceptor: every crash (any thread) is written to
- * Squidify/logs/last_crash.txt (internal files/ when "All files access" is
+ * Squirtify/logs/last_crash.txt (internal files/ when "All files access" is
  * not granted) together with the last portion of the AppLog — so the next
  * launch can show a dialog with a "copy log" button containing the exact
  * stack trace AND everything the app was doing right before it died
  * (API calls, download steps, playback events).
  *
  * A short one-line summary of every crash is also appended to
- * Squidify/logs/crash_history.txt (last 12 kept), viewable from
+ * Squirtify/logs/crash_history.txt (last 12 kept), viewable from
  * Settings → Log.
  */
 object CrashHandler {
@@ -39,7 +39,7 @@ object CrashHandler {
 
     private val timeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
 
-    /** Squidify/logs with all-files access, otherwise the internal files dir. */
+    /** Squirtify/logs with all-files access, otherwise the internal files dir. */
     private fun logDir(ctx: Context): File =
         AllFilesAccess.subDir("logs") ?: ctx.filesDir
 
@@ -48,7 +48,7 @@ object CrashHandler {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             try {
-                android.util.Log.e("SquidifyCrash", "Uncaught exception on ${thread.name}", throwable)
+                android.util.Log.e("SquirtifyCrash", "Uncaught exception on ${thread.name}", throwable)
                 writeReport(appContext, thread, throwable)
             } catch (_: Throwable) {
                 // never let the handler itself explode
@@ -65,7 +65,7 @@ object CrashHandler {
         val now = System.currentTimeMillis()
         val stamp = synchronized(timeFormat) { timeFormat.format(Date(now)) }
         val header = buildString {
-            appendLine("Squidify crash report")
+            appendLine("Squirtify crash report")
             appendLine("Time: $stamp")
             appendLine(
                 "App: ${appVersionLabel(ctx)} · Android ${android.os.Build.VERSION.RELEASE} " +
@@ -131,7 +131,7 @@ object CrashHandler {
     fun pendingReport(ctx: Context): CrashReport? {
         val dir = logDir(ctx)
         return try {
-            // prefer Squidify/logs, fall back to a legacy internal report
+            // prefer Squirtify/logs, fall back to a legacy internal report
             val f = listOf(File(dir, LAST_CRASH), File(ctx.filesDir, LAST_CRASH))
                 .firstOrNull { it.isFile } ?: return null
             val text = f.readText()
@@ -189,7 +189,7 @@ object CrashHandler {
         runCatching { File(ctx.filesDir, HISTORY).delete() }
     }
 
-    /** Moves legacy internal crash files into Squidify/logs after the grant. */
+    /** Moves legacy internal crash files into Squirtify/logs after the grant. */
     fun migrateFiles(ctx: Context) {
         val dir = logDir(ctx)
         if (dir == ctx.filesDir) return

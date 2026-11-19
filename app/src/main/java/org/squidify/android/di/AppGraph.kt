@@ -37,7 +37,7 @@ class AppGraph(context: Context) {
 
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /** User-visible storage (Squidify folder via SAF, with safe fallbacks). */
+    /** User-visible storage (Squirtify folder via SAF, with safe fallbacks). */
     val storage = UserStorage(appContext)
 
     val http: OkHttpClient = OkHttpClient.Builder()
@@ -61,7 +61,7 @@ class AppGraph(context: Context) {
         repo.startCollection(scope)
     }
 
-    /** Local favourites — songs and albums, kept in Squidify/UserData. */
+    /** Local favourites — songs and albums, kept in Squirtify/UserData. */
     val favorites = FavoritesRepository(storage)
 
     val history = ListenHistory(appContext, storage)
@@ -88,7 +88,7 @@ class AppGraph(context: Context) {
         val mb = settings.state().value.audioCacheMb
         val bytes = mb.toLong() * 1024L * 1024L
         // with "All files access" the streamed-audio cache is user-visible in
-        // Squidify/cache/exoplayer, otherwise it stays in the internal cache dir
+        // Squirtify/cache/exoplayer, otherwise it stays in the internal cache dir
         val dir = AllFilesAccess.subDir("cache/exoplayer")
             ?: File(context.cacheDir, "exoplayer")
         AppLog.i("Cache", "Opening audio cache: $mb MB at ${dir.path}")
@@ -122,7 +122,7 @@ class AppGraph(context: Context) {
         AppLog.i("Cache", "Audio cache cleared: $removed entries removed")
     }
 
-    /** Cover-art disk cache directory (Squidify/cache/image_cache when possible). */
+    /** Cover-art disk cache directory (Squirtify/cache/image_cache when possible). */
     fun imageCacheDir(context: Context): File =
         AllFilesAccess.subDir("cache/image_cache")
             ?: File(context.cacheDir, "image_cache")
@@ -162,7 +162,7 @@ class AppGraph(context: Context) {
     }
 
     /**
-     * Called after the user grants the Squidify storage folder: migrates the
+     * Called after the user grants the Squirtify storage folder: migrates the
      * internal user data into the folder and reloads every repository from
      * its new location.
      */
@@ -175,12 +175,12 @@ class AppGraph(context: Context) {
         history.reload()
         offlineLibrary.reload()
         downloads.reloadRegistry()
-        AppLog.i("Storage", "User data reloaded from the Squidify folder")
+        AppLog.i("Storage", "User data reloaded from the Squirtify folder")
     }
 
     /**
      * Called when the user flips "All files access" on: moves user data and
-     * crash logs into Squidify/, reloads every repository from there and
+     * crash logs into Squirtify/, reloads every repository from there and
      * switches future downloads/cache/log writes to direct File I/O.
      */
     suspend fun onAllFilesGranted() {

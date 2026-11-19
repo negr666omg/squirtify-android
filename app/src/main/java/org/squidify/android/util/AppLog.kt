@@ -21,7 +21,7 @@ import java.util.Locale
  * exactly why a track failed to load.
  *
  * Entries are kept in memory (ring buffer) and mirrored to
- * Squidify/logs/applog.txt with "All files access" (files/applog.txt
+ * Squirtify/logs/applog.txt with "All files access" (files/applog.txt
  * otherwise), rotated at ~512 KB into applog.old.txt, so they survive
  * restarts.
  */
@@ -131,7 +131,7 @@ object AppLog {
 
     // ------------------------------------------------------------- file
 
-    /** Squidify/logs with all-files access, otherwise the internal files dir. */
+    /** Squirtify/logs with all-files access, otherwise the internal files dir. */
     private fun logDir(ctx: Context): File =
         AllFilesAccess.subDir("logs") ?: ctx.filesDir
 
