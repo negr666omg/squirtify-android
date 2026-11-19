@@ -53,6 +53,7 @@ fun SongActionsSheet(
     onGoToArtist: (() -> Unit)? = null,
     onDownload: () -> Unit = {},
     onAddToPlaylist: () -> Unit = {},
+    showAddToPlaylist: Boolean = true,
     extraAction: Pair<String, (() -> Unit)>? = null,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -91,8 +92,10 @@ fun SongActionsSheet(
             SheetAction(icon = { Icon(Icons.AutoMirrored.Filled.List, null) }, label = "Add to queue") {
                 onAddToQueue(); onDismiss()
             }
+            if (showAddToPlaylist) {
             SheetAction(icon = { Icon(Icons.Filled.Add, null) }, label = "Add to playlist…") {
                 onAddToPlaylist(); onDismiss()
+            }
             }
             SheetAction(icon = { Icon(SqIcons.Download, null) }, label = "Download") {
                 onDownload(); onDismiss()
