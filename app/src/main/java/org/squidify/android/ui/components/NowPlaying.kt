@@ -1350,7 +1350,10 @@ private fun QueueTab(modifier: Modifier = Modifier) {
 private fun Float.formatRate(): String = "%.2f".format(java.util.Locale.US, this)
 
 /** Gramophone-inspired rate controls; tap a value to enter an exact decimal. */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    androidx.compose.ui.ExperimentalComposeUiApi::class,
+)
 @Composable
 private fun PlaybackRateSheet(onDismiss: () -> Unit) {
     val graph = App.graph()
