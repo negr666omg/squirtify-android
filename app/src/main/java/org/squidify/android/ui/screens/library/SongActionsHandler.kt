@@ -16,7 +16,6 @@ import org.squidify.android.player.PlayerSong
 import org.squidify.android.ui.components.AddToPlaylistDialog
 import org.squidify.android.ui.components.SongActionsSheet
 import org.squidify.android.ui.components.SquidifyDownloadQualityDialog
-import org.squidify.android.ui.components.toggleSongHeart
 
 /**
  * Reusable handler that shows the track action sheet and the add-to-playlist
@@ -88,7 +87,7 @@ class SongActionsHandler(
                 scope.launch { graph.player.playNext(listOf(actionSong)) }
             },
             onAddToQueue = {
-                scope.launch { graph.player.addToQueue(listOf(PlayerSong.from(s))) }
+                scope.launch { graph.player.addToQueue(listOf(actionSong)) }
             },
             onGoToAlbum = onGoToAlbum?.let { cb -> { cb(s) } },
             onGoToArtist = onGoToArtist?.let { cb -> { cb(s) } },
