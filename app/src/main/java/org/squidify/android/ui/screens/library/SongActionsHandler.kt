@@ -35,16 +35,22 @@ class SongActionsHandler(
         private set
     var showQualityDialog by mutableStateOf(false)
         private set
+    private var playerSongOverride by mutableStateOf<PlayerSong?>(null)
+    private var downloadOverride by mutableStateOf<(() -> Unit)?>(null)
 
-    fun show(s: Song, index: Int = -1) {
+    fun show(s: Song, index: Int = -1, playerSong: PlayerSong? = null, onDownload: (() -> Unit)? = null) {
         song = s
         songIndex = index
+        playerSongOverride = playerSong
+        downloadOverride = onDownload
     }
 
     fun dismiss() {
         song = null
         songIndex = -1
         showPlaylistDialog = false
+        playerSongOverride = null
+        downloadOverride = null
     }
 
     @Composable
@@ -54,8 +60,9 @@ class SongActionsHandler(
         val graph = App.graph()
         // live favourite state: the sheet's Like row reflects (and toggles) it
         val favIds by graph.favorites.songIds.collectAsState()
+        val actionSong = playerSongOverride ?: PlayerSong.from(s)
 
-        if (showPlaylistDialog) {
+        if (showPlaylistDialog && playerSongOverride == null) {
             AddToPlaylistDialog(song = s, onDismiss = { showPlaylistDialog = false })
         }
 
@@ -74,11 +81,11 @@ class SongActionsHandler(
             song = s,
             isHearted = s.id in favIds,
             onToggleHeart = {
-                scope.launch { toggleSongHeart(s) }
+                scope.launch { graph.favorites.toggleSong(actionSong) }
             },
             onDismiss = { dismiss() },
             onPlayNext = {
-                scope.launch { graph.player.playNext(listOf(PlayerSong.from(s))) }
+                scope.launch { graph.player.playNext(listOf(actionSong)) }
             },
             onAddToQueue = {
                 scope.launch { graph.player.addToQueue(listOf(PlayerSong.from(s))) }
@@ -86,9 +93,10 @@ class SongActionsHandler(
             onGoToAlbum = onGoToAlbum?.let { cb -> { cb(s) } },
             onGoToArtist = onGoToArtist?.let { cb -> { cb(s) } },
             onDownload = {
-                showQualityDialog = true
+                val custom = downloadOverride
+                if (custom != null) custom() else showQualityDialog = true
             },
-            onAddToPlaylist = { showPlaylistDialog = true },
+            onAddToPlaylist = { if (playerSongOverride == null) showPlaylistDialog = true },
             extraAction = extraRemove?.let { rm ->
                 "Remove from playlist" to {
                     scope.launch { rm(s, songIndex) }
