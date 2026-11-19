@@ -97,6 +97,7 @@ class SongActionsHandler(
                 if (custom != null) custom() else showQualityDialog = true
             },
             onAddToPlaylist = { if (playerSongOverride == null) showPlaylistDialog = true },
+            showAddToPlaylist = playerSongOverride == null,
             extraAction = extraRemove?.let { rm ->
                 "Remove from playlist" to {
                     scope.launch { rm(s, songIndex) }
