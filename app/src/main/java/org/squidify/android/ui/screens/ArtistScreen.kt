@@ -129,7 +129,7 @@ fun ArtistScreen(
                                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
-                                items(albums!!.size) { i ->
+                                items(albums!!.size, key = { albums!![it].id }) { i ->
                                     AlbumCard(
                                         album = albums!![i],
                                         onClick = { onAlbumClick(albums!![i]) },

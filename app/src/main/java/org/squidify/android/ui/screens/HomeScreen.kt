@@ -37,7 +37,6 @@ import org.squidify.android.ui.components.CoverArt
 import org.squidify.android.ui.components.ErrorRetry
 import org.squidify.android.ui.components.LoadingShelf
 import org.squidify.android.ui.components.SectionHeader
-import org.squidify.android.ui.components.coverArtUrl
 
 @Composable
 fun HomeScreen(
