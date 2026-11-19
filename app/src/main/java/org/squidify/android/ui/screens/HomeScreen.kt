@@ -200,6 +200,18 @@ private fun RecentTrackCard(
     }
 }
 
+internal fun historyAlbumKey(e: HistoryEntry): String =
+    if (e.source == org.squidify.android.data.DownloadSource.KHINSIDER) {
+        // Track URLs share their parent album URL; include it so similarly
+        // named soundtracks from different games never collapse together.
+        val albumUrl = e.khiTrackUrl
+            ?.substringBeforeLast('/')
+            ?.takeIf { it.isNotBlank() && it != e.khiTrackUrl }
+        "khi:${albumUrl ?: "unknown:${e.album ?: e.title}"}"
+    } else {
+        "sq:${e.albumId ?: e.album ?: e.title}"
+    }
+
 /** Shared album shelf used by Home and the other library screens. */
 @Composable
 private fun ShelfSection(title: String?, albums: List<Album>?, onAlbumClick: (Album) -> Unit) {
