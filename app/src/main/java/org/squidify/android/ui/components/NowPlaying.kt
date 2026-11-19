@@ -14,6 +14,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.foundation.background
@@ -63,6 +64,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -1182,6 +1184,9 @@ private fun QueueTab(modifier: Modifier = Modifier) {
     val isPlaying by player.isPlaying.collectAsState()
     val shuffle by player.shuffle.collectAsState()
     val repeatMode by player.repeatMode.collectAsState()
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    var draggingIndex by remember { mutableStateOf<Int?>(null) }
+    var dragOffset by remember { mutableStateOf(0f) }
 
     Column(modifier = modifier) {
         Row(
@@ -1220,11 +1225,16 @@ private fun QueueTab(modifier: Modifier = Modifier) {
             }
         }
         androidx.compose.foundation.lazy.LazyColumn(
+            state = listState,
             modifier = Modifier.weight(1f),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
         ) {
-            items(queue.size, key = { i -> queue[i].id + i }) { i ->
+            items(queue.size, key = { i ->
                 val song = queue[i]
+                "${song.source.name}:${song.id}:${queue.take(i).count { it.id == song.id }}"
+            }) { i ->
+                val song = queue[i]
+                val currentItemIndex by rememberUpdatedState(i)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1271,6 +1281,47 @@ private fun QueueTab(modifier: Modifier = Modifier) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 10.dp),
+                    )
+                    Text(
+                        text = "⠿",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (draggingIndex == i) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .padding(horizontal = 8.dp)
+                            .pointerInput(player) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        draggingIndex = currentItemIndex
+                                        dragOffset = 0f
+                                    },
+                                    onDragEnd = {
+                                        draggingIndex = null
+                                        dragOffset = 0f
+                                    },
+                                    onDragCancel = {
+                                        draggingIndex = null
+                                        dragOffset = 0f
+                                    },
+                                    onDrag = { change, amount ->
+                                        change.consume()
+                                        val from = draggingIndex ?: return@detectDragGesturesAfterLongPress
+                                        val visible = listState.layoutInfo.visibleItemsInfo
+                                        val dragged = visible.firstOrNull { it.index == from } ?: return@detectDragGesturesAfterLongPress
+                                        val center = dragged.offset + dragged.size / 2f + dragOffset + amount.y
+                                        val target = visible.firstOrNull {
+                                            center >= it.offset && center < it.offset + it.size
+                                        }
+                                        if (target != null && target.index != from) {
+                                            player.move(from, target.index)
+                                            draggingIndex = target.index
+                                            dragOffset = 0f
+                                        } else {
+                                            dragOffset += amount.y
+                                        }
+                                    },
+                                )
+                            },
                     )
                     IconButton(onClick = { player.removeAt(i) }) {
                         Icon(
