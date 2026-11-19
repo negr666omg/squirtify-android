@@ -11,6 +11,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import org.squidify.android.App
+import org.squidify.android.data.DownloadSource
 import org.squidify.android.data.Song
 import org.squidify.android.player.PlayerSong
 import org.squidify.android.ui.components.AddToPlaylistDialog
@@ -61,7 +62,9 @@ class SongActionsHandler(
         val favIds by graph.favorites.songIds.collectAsState()
         val actionSong = playerSongOverride ?: PlayerSong.from(s)
 
-        if (showPlaylistDialog && playerSongOverride == null) {
+        val supportsPlaylists = playerSongOverride?.source != DownloadSource.KHINSIDER
+
+        if (showPlaylistDialog && supportsPlaylists) {
             AddToPlaylistDialog(song = s, onDismiss = { showPlaylistDialog = false })
         }
 
@@ -95,8 +98,8 @@ class SongActionsHandler(
                 val custom = downloadOverride
                 if (custom != null) custom() else showQualityDialog = true
             },
-            onAddToPlaylist = { if (playerSongOverride == null) showPlaylistDialog = true },
-            showAddToPlaylist = playerSongOverride == null,
+            onAddToPlaylist = { if (supportsPlaylists) showPlaylistDialog = true },
+            showAddToPlaylist = supportsPlaylists,
             extraAction = extraRemove?.let { rm ->
                 "Remove from playlist" to {
                     scope.launch { rm(s, songIndex) }
