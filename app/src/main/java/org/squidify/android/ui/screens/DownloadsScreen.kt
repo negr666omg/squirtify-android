@@ -49,9 +49,11 @@ import org.squidify.android.data.FavSong
 import org.squidify.android.data.HistoryEntry
 import org.squidify.android.data.OfflineAlbumSnapshot
 import org.squidify.android.data.Song
+import org.squidify.android.data.KhiTrack
 import org.squidify.android.player.PlayerSong
 import org.squidify.android.ui.components.CoverArt
 import org.squidify.android.ui.components.EmptyState
+import org.squidify.android.ui.components.KhiDownloadQualityDialog
 import org.squidify.android.ui.theme.SqIcons
 import org.squidify.android.ui.screens.library.SongActionsHandler
 import org.squidify.android.util.AppLog
@@ -199,6 +201,7 @@ fun DownloadsScreen() {
     }
 
     var expandedAlbum by remember { mutableStateOf<DownloadAlbumKey?>(null) }
+    var pendingKhiDownload by remember { mutableStateOf<Pair<KhiTrack, OfflineAlbumSnapshot>?>(null) }
 
     fun playGroup(group: AlbumGroup, startIndex: Int = 0, shuffled: Boolean = false) {
         val songs = group.jobs.map { job ->
@@ -237,6 +240,24 @@ fun DownloadsScreen() {
         } else {
             App.graph().player.play(songs, startIndex)
         }
+    }
+
+    pendingKhiDownload?.let { (track, snapshot) ->
+        KhiDownloadQualityDialog(
+            trackTitle = track.title,
+            onDismiss = { pendingKhiDownload = null },
+            onConfirm = { format ->
+                graph.downloads.enqueueKhi(
+                    albumName = snapshot.albumName,
+                    trackTitle = track.title,
+                    trackUrl = track.url,
+                    format = format,
+                    qualityLabel = format.uppercase(),
+                    coverUrl = snapshot.coverUrl,
+                )
+                pendingKhiDownload = null
+            },
+        )
     }
 
     LazyColumn(
@@ -376,6 +397,20 @@ fun DownloadsScreen() {
                                     downloaded = true,
                                     disabled = false,
                                     onPlay = { graph.player.play(playerSongs, i) },
+                                    onLongClick = {
+                                        val playerSong = playerSongs[i]
+                                        songActions.show(
+                                            Song(
+                                                id = playerSong.id,
+                                                title = track.title,
+                                                album = snapshot.albumName,
+                                                artist = group.artist,
+                                                coverArt = snapshot.coverUrl,
+                                            ),
+                                            playerSong = playerSong,
+                                            onDownload = { pendingKhiDownload = track to snapshot },
+                                        )
+                                    },
                                 )
                             }
                         }
