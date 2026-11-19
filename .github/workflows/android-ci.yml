@@ -13,7 +13,7 @@ permissions:
 # Avoid concurrent Gradle dependency downloads from rapid pushes to the same branch.
 concurrency:
   group: android-ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   verify:
