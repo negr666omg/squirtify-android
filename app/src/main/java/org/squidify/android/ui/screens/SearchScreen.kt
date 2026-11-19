@@ -238,7 +238,7 @@ fun SearchScreen(
                     if (query.isNotEmpty()) {
                         IconButton(onClick = {
                             query = ""
-                            artists = null; albums = null; songs = null; khiAlbums = null
+                            runSearch("")
                         }) { Icon(Icons.Filled.Close, "Clear") }
                     }
                 },
