@@ -1187,6 +1187,15 @@ private fun QueueTab(modifier: Modifier = Modifier) {
     val shuffle by player.shuffle.collectAsState()
     val repeatMode by player.repeatMode.collectAsState()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val queueKeys = remember(queue) {
+        val occurrences = HashMap<String, Int>(queue.size)
+        queue.map { song ->
+            val base = "${song.source.name}:${song.id}"
+            val occurrence = occurrences.getOrDefault(base, 0)
+            occurrences[base] = occurrence + 1
+            "$base:$occurrence"
+        }
+    }
     var draggingIndex by remember { mutableStateOf<Int?>(null) }
     var dragOffset by remember { mutableStateOf(0f) }
 
@@ -1235,10 +1244,7 @@ private fun QueueTab(modifier: Modifier = Modifier) {
             modifier = Modifier.weight(1f),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
         ) {
-            items(queue.size, key = { i ->
-                val song = queue[i]
-                "${song.source.name}:${song.id}:${queue.take(i).count { it.id == song.id }}"
-            }) { i ->
+            items(queue.size, key = { queueKeys[it] }) { i ->
                 val song = queue[i]
                 val currentItemIndex by rememberUpdatedState(i)
                 Row(

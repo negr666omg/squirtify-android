@@ -426,10 +426,14 @@ class PlayerManager(
                 val incomingIndex = _queue.value.indexOfFirst { it.id == mediaItem?.mediaId }
                 val incoming = _queue.value.getOrNull(incomingIndex)
                 if (previous != null && incoming != null && albumIdentity(previous) != albumIdentity(incoming)) {
-                    val firstInAlbum = _queue.value.indexOfFirst { albumIdentity(it) == albumIdentity(previous) }
-                    if (firstInAlbum >= 0) {
-                        AppLog.i(TAG, "Repeat album: looping '${previous.album ?: previous.title}'")
-                        p.seekTo(firstInAlbum, 0L)
+                    val previousAlbum = albumIdentity(previous)
+                    val nextInAlbum = (( _currentIndex.value + 1) until _queue.value.size)
+                        .firstOrNull { albumIdentity(_queue.value[it]) == previousAlbum }
+                    val targetIndex = nextInAlbum
+                        ?: _queue.value.indexOfFirst { albumIdentity(it) == previousAlbum }.takeIf { it >= 0 }
+                    if (targetIndex != null) {
+                        AppLog.i(TAG, "Repeat album: skipping to '${_queue.value[targetIndex].title}'")
+                        p.seekTo(targetIndex, 0L)
                         return
                     }
                 }
@@ -1602,10 +1606,17 @@ class PlayerManager(
             async {
                 val isKhi = song.source == org.squidify.android.data.DownloadSource.KHINSIDER
                 val hasLocalFile = song.khiTrackUrl?.let { downloads.downloadedUriForKhi(it) } != null
-                if (isKhi && shouldResolveKhiTrack(song.khiDirectUrl != null, hasLocalFile)) {
+                if (isKhi && !hasLocalFile && (forceRefresh || song.khiDirectUrl == null)) {
                     sem.acquire()
                     try {
                         resolveKhi(song, forceRefresh = forceRefresh)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        AppLog.w(TAG, "Could not refresh KHInsider URL for '${song.title}': ${error.message}")
+                        // Keep the old signed URL as a fallback when available;
+                        // a missing URL will surface as a normal playback error.
+                        song
                     } finally {
                         sem.release()
                     }
@@ -1748,8 +1759,9 @@ class PlayerManager(
         return when (_repeatMode.value) {
             REPEAT_TRACK -> null
             REPEAT_ALBUM -> {
-                if (next < q.size && albumIdentity(q[next]) == albumIdentity(current)) next
-                else q.indexOfFirst { albumIdentity(it) == albumIdentity(current) }.takeIf { it >= 0 }
+                val album = albumIdentity(current)
+                (next until q.size).firstOrNull { albumIdentity(q[it]) == album }
+                    ?: q.indexOfFirst { albumIdentity(it) == album }.takeIf { it >= 0 }
             }
             REPEAT_QUEUE -> if (next < q.size) next else 0
             else -> next.takeIf { it < q.size }
