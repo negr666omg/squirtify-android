@@ -900,7 +900,7 @@ class PlayerManager(
         saveQueue()
     }
 
-        fun jumpTo(index: Int) {
+    fun jumpTo(index: Int) {
         if (index !in _queue.value.indices) return
         cancelPendingSwitch()
         cancelCrossfade()
@@ -987,7 +987,7 @@ class PlayerManager(
         saveQueue()
     }
 
-        fun move(from: Int, to: Int) {
+    fun move(from: Int, to: Int) {
         val q = _queue.value.toMutableList()
         if (from !in q.indices || to !in q.indices || from == to) return
         if (cfState != CF_NONE) cancelCrossfade()
@@ -1010,7 +1010,7 @@ class PlayerManager(
         saveQueue()
     }
 
-        /**
+    /**
      * The service may have been recreated while PlayerManager kept its queue.
      * Recreate the media timeline before accepting transport commands.
      */
