@@ -288,8 +288,12 @@ class DownloadManager(
     }
 
     private fun enqueueSquirtifyInner(song: Song, quality: StreamQuality) {
-        if (_jobs.value.any { it.source == DownloadSource.SQUIDIFY && it.songId == song.id && it.status != DownloadStatus.FAILED }) {
-            AppLog.w(TAG, "Download of '${song.title}' skipped — already queued or done")
+        val requestedRank = qualityRank(quality)
+        val existing = _jobs.value.filter {
+            it.source == DownloadSource.SQUIDIFY && it.songId == song.id && it.status != DownloadStatus.FAILED
+        }
+        if (existing.any { qualityRank(it) >= requestedRank }) {
+            AppLog.w(TAG, "Download of '${song.title}' skipped — same or better quality is already available")
             return
         }
         val ext = if (quality == StreamQuality.ORIGINAL) (song.suffix ?: "flac") else quality.extension
@@ -306,15 +310,13 @@ class DownloadManager(
             requestUrl = url,
             format = ext,
             qualityLabel = quality.shortLabel,
-            fileName = trackFileName(song, ext),
+            fileName = trackFileName(song, ext, quality),
             durationMs = (song.duration ?: 0) * 1000L,
         )
         AppLog.i(TAG, "Queued download: '${song.title}' @ ${quality.shortLabel} → ${storage.downloadsLocationLabel()}/${song.album ?: "Unknown Album"}/${job.fileName}")
         // replace a stale FAILED entry instead of appending a second job with
         // the same id — duplicate ids crash the downloads list keys
-        _jobs.value = _jobs.value.filterNot {
-            it.source == DownloadSource.SQUIDIFY && it.songId == song.id && it.status == DownloadStatus.FAILED
-        } + job
+        _jobs.value = _jobs.value.filterNot { it.id == job.id && it.status == DownloadStatus.FAILED } + job
         persist()
         start()
         kickService()
@@ -333,8 +335,12 @@ class DownloadManager(
         val existing = _jobs.value
         val albumName = songs.firstOrNull()?.album
         val albumCoverArt = songs.firstOrNull()?.let { it.coverArt ?: it.albumId?.let { a -> "al-$a" } }
+        val requestedRank = qualityRank(quality)
         val newJobs = songs.mapNotNull { song ->
-            if (existing.any { it.source == DownloadSource.SQUIDIFY && it.songId == song.id && it.status != DownloadStatus.FAILED }) return@mapNotNull null
+            val existingForSong = existing.filter {
+                it.source == DownloadSource.SQUIDIFY && it.songId == song.id && it.status != DownloadStatus.FAILED
+            }
+            if (existingForSong.any { qualityRank(it) >= requestedRank }) return@mapNotNull null
             val ext = if (quality == StreamQuality.ORIGINAL) (song.suffix ?: "flac") else quality.extension
             DownloadJob(
                 id = "sq-${song.id}-${quality.name}",
@@ -348,7 +354,7 @@ class DownloadManager(
                 requestUrl = subsonic.streamUrl(song.id, quality),
                 format = ext,
                 qualityLabel = quality.shortLabel,
-                fileName = trackFileName(song, ext),
+                fileName = trackFileName(song, ext, quality),
                 durationMs = (song.duration ?: 0) * 1000L,
             )
         }
@@ -456,12 +462,32 @@ class DownloadManager(
     }
 
     /** File name inside the album folder: "07 - Title.ext" when the track number is known. */
-    private fun trackFileName(song: Song, ext: String): String {
+    private fun trackFileName(song: Song, ext: String, quality: StreamQuality): String {
         val base = when (val t = song.track) {
             null -> song.title
             else -> String.format(java.util.Locale.US, "%02d - %s", t, song.title)
         }
-        return sanitize("$base.$ext")
+        // Lossy encodes of the same song can share an extension (e.g. MP3 64
+        // and MP3 320). Keep each quality in its own file; never overwrite the
+        // lower-quality copy while an upgrade is downloading.
+        val qualitySuffix = if (quality == StreamQuality.ORIGINAL) "" else " [${quality.name.replace('_', '-')}]"
+        return sanitize("$base$qualitySuffix.$ext")
+    }
+
+    private fun qualityRank(quality: StreamQuality): Int {
+        if (quality == StreamQuality.ORIGINAL) return 100_000
+        val bitrate = quality.maxBitRate ?: 0
+        // Opus generally reaches comparable transparency at a lower bitrate.
+        return bitrate * if (quality.format == "opus") 12 else 10
+    }
+
+    private fun qualityRank(job: DownloadJob): Int {
+        if (job.source == DownloadSource.KHINSIDER) {
+            return if (job.format.equals("flac", ignoreCase = true)) 100_000 else 1_000
+        }
+        val quality = StreamQuality.entries.firstOrNull { it.shortLabel == job.qualityLabel }
+            ?: return 0
+        return qualityRank(quality)
     }
 
     // ---------------------------------------------------------------- controls
@@ -551,12 +577,15 @@ class DownloadManager(
 
     /** Local playable Uri for a downloaded Squirtify song (any quality). */
     fun downloadedUriFor(songId: String): Uri? {
-        val job = _jobs.value.firstOrNull {
-            it.source == DownloadSource.SQUIDIFY && it.songId == songId && it.status == DownloadStatus.DONE
-        } ?: return null
-        val content = job.contentUri
+        val best = _jobs.value
+            .filter { it.source == DownloadSource.SQUIDIFY && it.songId == songId && it.status == DownloadStatus.DONE }
+            .sortedByDescending(::qualityRank)
+            .firstOrNull { job ->
+                (job.contentUri != null && storage.documentExists(job.contentUri)) || finishedFileFor(job) != null
+            } ?: return null
+        val content = best.contentUri
         if (content != null && storage.documentExists(content)) return Uri.parse(content)
-        return finishedFileFor(job)?.let(Uri::fromFile)
+        return finishedFileFor(best)?.let(Uri::fromFile)
     }
 
     /** Local playable Uri for a downloaded KHInsider track (matched by track page URL). */
@@ -572,7 +601,15 @@ class DownloadManager(
 
     /** All finished audio downloads (the offline library shown in the UI). */
     fun completedAudio(): List<DownloadJob> =
-        _jobs.value.filter { it.status == DownloadStatus.DONE && it.kind == "audio" }
+        _jobs.value
+            .filter { it.status == DownloadStatus.DONE && it.kind == "audio" }
+            .groupBy { job ->
+                if (job.source == DownloadSource.SQUIDIFY) "sq:${job.songId}"
+                else "khi:${job.requestUrl}"
+            }
+            .values
+            .mapNotNull { versions -> versions.maxByOrNull(::qualityRank) }
+            .sortedBy { it.createdAt }
 
     // ---------------------------------------------------------------- integrity
 
