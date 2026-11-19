@@ -69,15 +69,21 @@ fun MiniPlayer(
     val scroll = settings.scrollingText
     val playIsr = remember { MutableInteractionSource() }
     val nextIsr = remember { MutableInteractionSource() }
+    val miniPlayerShape = RoundedCornerShape(
+        topStart = 24.dp,
+        topEnd = 24.dp,
+        bottomEnd = 12.dp,
+        bottomStart = 12.dp,
+    )
     Surface(
-        shape = RoundedCornerShape(24.dp),
+        shape = miniPlayerShape,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 2.dp,
         shadowElevation = 4.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(24.dp))
+            .padding(horizontal = 12.dp, top = 4.dp)
+            .clip(miniPlayerShape)
             .clickable(onClick = onOpen),
     ) {
         Column {
