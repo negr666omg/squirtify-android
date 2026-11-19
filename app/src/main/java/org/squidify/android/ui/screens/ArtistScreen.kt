@@ -16,8 +16,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -96,24 +94,6 @@ fun ArtistScreen(
         TopBar(
             title = artist?.name ?: "Artist",
             onBack = onBack,
-            starState = artist?.starred != null,
-            onStar = {
-                val a = artist ?: return@TopBar
-                scope.launch {
-                    try {
-                        if (a.starred != null) {
-                            graph.subsonic.unstarArtist(a.id)
-                            artist = a.copy(starred = null)
-                        } else {
-                            graph.subsonic.starArtist(a.id)
-                            artist = a.copy(starred = "now")
-                        }
-                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                    }
-                }
-            },
         )
 
         when {
