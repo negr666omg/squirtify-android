@@ -619,17 +619,23 @@ class DownloadManager(
         albumName: String,
         artist: String?,
         identity: String?,
+        songIds: Set<String> = emptySet(),
+        trackUrls: Set<String> = emptySet(),
     ): Boolean {
         val matches = _jobs.value.filter { job ->
             if (job.status != DownloadStatus.DONE || job.kind != "audio" || job.source != source) {
                 false
             } else when (source) {
                 DownloadSource.SQUIDIFY -> {
-                    (identity != null && job.albumId == identity) ||
-                        (job.album == albumName && job.artist == artist)
+                    (job.songId != null && job.songId in songIds) ||
+                        (identity != null && job.albumId == identity) ||
+                        (songIds.isEmpty() && job.album == albumName && job.artist == artist)
                 }
-                DownloadSource.KHINSIDER -> identity != null &&
-                    job.requestUrl.substringBeforeLast('/') == identity
+                DownloadSource.KHINSIDER -> {
+                    job.requestUrl in trackUrls ||
+                        (trackUrls.isEmpty() && identity != null &&
+                            job.requestUrl.substringBeforeLast('/') == identity)
+                }
             }
         }
         if (matches.isEmpty()) return false
