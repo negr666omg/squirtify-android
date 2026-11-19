@@ -194,16 +194,31 @@ fun NowPlayingScreen(
                 .systemBarsPadding(),
         ) {
             // ---------- top bar with inline tabs (saves a whole row)
-            Row(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 4.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = {
-                    AppLog.d("UI", "Now Playing closed via chevron")
-                    onClose()
-                }) {
+                // Keep the tab group geometrically centered in the screen.
+                // The close button is overlaid at the start and no longer
+                // shifts Lyrics / Up Next to the right.
+                Row(
+                    modifier = Modifier.align(Alignment.Center),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TabPill("Playing", tab == 0) { tab = 0 }
+                    Spacer(Modifier.width(6.dp))
+                    TabPill("Lyrics", tab == 1) { tab = 1 }
+                    Spacer(Modifier.width(6.dp))
+                    TabPill("Up Next", tab == 2) { tab = 2 }
+                }
+                IconButton(
+                    modifier = Modifier.align(Alignment.CenterStart),
+                    onClick = {
+                        AppLog.d("UI", "Now Playing closed via chevron")
+                        onClose()
+                    },
+                ) {
                     Icon(
                         imageVector = Icons.Filled.KeyboardArrowDown,
                         contentDescription = "Close",
@@ -211,13 +226,6 @@ fun NowPlayingScreen(
                         modifier = Modifier.size(30.dp),
                     )
                 }
-                Spacer(Modifier.weight(0.6f))
-                TabPill("Playing", tab == 0) { tab = 0 }
-                Spacer(Modifier.width(6.dp))
-                TabPill("Lyrics", tab == 1) { tab = 1 }
-                Spacer(Modifier.width(6.dp))
-                TabPill("Up Next", tab == 2) { tab = 2 }
-                Spacer(Modifier.weight(1f))
             }
 
             playbackError?.let { message ->
