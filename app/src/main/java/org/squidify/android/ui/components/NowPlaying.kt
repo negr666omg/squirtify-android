@@ -43,7 +43,6 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -1467,41 +1466,50 @@ private fun PlaybackRateSheet(onDismiss: () -> Unit) {
 
     val target = editTarget
     if (target != null) {
-        AlertDialog(
-            onDismissRequest = { editTarget = null },
-            title = {
-                Text(
-                    when (target) {
-                        "tempo" -> if (linked) "Set tempo & pitch" else "Set tempo"
-                        else -> "Set pitch"
-                    },
-                )
-            },
-            text = {
-                OutlinedTextField(
-                    value = exactInput,
-                    onValueChange = {
-                        exactInput = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
-                        exactInputError = false
-                    },
-                    label = { Text("Value") },
-                    suffix = { Text("×") },
-                    singleLine = true,
-                    isError = exactInputError,
-                    supportingText = {
-                        Text(
-                            if (exactInputError) "Enter a value from 0.25 to 4.00."
-                            else "Allowed range: 0.25×–4.00×",
-                        )
-                    },
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Decimal,
-                        imeAction = ImeAction.Done,
-                    ),
-                    modifier = Modifier.focusRequester(exactFocusRequester),
-                )
-            },
-            confirmButton = {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp),
+        ) {
+            OutlinedTextField(
+                value = exactInput,
+                onValueChange = { newValue: String ->
+                    exactInput = newValue.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
+                    exactInputError = false
+                },
+                label = {
+                    Text(
+                        when (target) {
+                            "tempo" -> if (linked) "Exact tempo & pitch" else "Exact tempo"
+                            else -> "Exact pitch"
+                        },
+                    )
+                },
+                suffix = { Text("×") },
+                singleLine = true,
+                isError = exactInputError,
+                supportingText = {
+                    Text(
+                        if (exactInputError) "Enter a value from 0.25 to 4.00."
+                        else "Allowed range: 0.25×–4.00×",
+                    )
+                },
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = ImeAction.Done,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(exactFocusRequester),
+            )
+            Row(
+                modifier = Modifier.align(Alignment.End),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = {
+                    editTarget = null
+                    keyboard?.hide()
+                }) { Text("Cancel") }
                 TextButton(
                     onClick = {
                         val value = exactInput.replace(',', '.').toFloatOrNull()
@@ -1512,15 +1520,13 @@ private fun PlaybackRateSheet(onDismiss: () -> Unit) {
                                 apply(tempo, value, false)
                             }
                             editTarget = null
+                            keyboard?.hide()
                         } else {
                             exactInputError = true
                         }
                     },
                 ) { Text("Apply") }
-            },
-            dismissButton = {
-                TextButton(onClick = { editTarget = null }) { Text("Cancel") }
-            },
-        )
+            }
+        }
     }
 }
