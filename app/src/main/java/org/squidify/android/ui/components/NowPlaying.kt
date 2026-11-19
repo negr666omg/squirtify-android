@@ -72,11 +72,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
@@ -1358,6 +1361,15 @@ private fun PlaybackRateSheet(onDismiss: () -> Unit) {
     var editTarget by remember { mutableStateOf<String?>(null) }
     var exactInput by remember { mutableStateOf("") }
     var exactInputError by remember { mutableStateOf(false) }
+    val exactFocusRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(editTarget) {
+        if (editTarget != null) {
+            exactFocusRequester.requestFocus()
+            keyboard?.show()
+        }
+    }
 
     fun apply(nextTempo: Float, nextPitch: Float, nextLinked: Boolean) {
         tempo = nextTempo
@@ -1483,6 +1495,7 @@ private fun PlaybackRateSheet(onDismiss: () -> Unit) {
                         keyboardType = KeyboardType.Decimal,
                         imeAction = ImeAction.Done,
                     ),
+                    modifier = Modifier.focusRequester(exactFocusRequester),
                 )
             },
             confirmButton = {
