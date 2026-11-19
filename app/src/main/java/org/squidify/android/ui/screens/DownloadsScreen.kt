@@ -26,8 +26,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -208,6 +210,8 @@ fun DownloadsScreen() {
 
     var expandedAlbum by remember { mutableStateOf<DownloadAlbumKey?>(null) }
     var pendingKhiDownload by remember { mutableStateOf<Pair<KhiTrack, OfflineAlbumSnapshot>?>(null) }
+    var pendingDeleteAlbum by remember { mutableStateOf<AlbumGroup?>(null) }
+    var deleteAlbumFailed by remember { mutableStateOf(false) }
 
     fun playGroup(group: AlbumGroup, startIndex: Int = 0, shuffled: Boolean = false) {
         val songs = group.jobs.map { job ->
@@ -340,6 +344,10 @@ fun DownloadsScreen() {
                             expandedAlbum = if (expandedAlbum == group.key) null else group.key
                         },
                         onPlay = { playGroup(group, 0) },
+                        onLongClick = {
+                            pendingDeleteAlbum = group
+                            deleteAlbumFailed = false
+                        },
                     )
                 }
                 if (expandedAlbum == group.key) {
@@ -369,7 +377,18 @@ fun DownloadsScreen() {
                                     downloaded = true,
                                     disabled = false,
                                     onPlay = { graph.player.play(playerSongs, i) },
-                                    onLongClick = { songActions.show(track) },
+                                    onLongClick = {
+                                        songActions.show(
+                                            track,
+                                            playerSong = playerSongs[i],
+                                            onDelete = {
+                                                graph.downloads.deleteDownloadedTrack(
+                                                    source = DownloadSource.SQUIDIFY,
+                                                    songId = track.id,
+                                                )
+                                            },
+                                        )
+                                    },
                                 )
                             }
                         }
@@ -415,6 +434,12 @@ fun DownloadsScreen() {
                                             ),
                                             playerSong = playerSong,
                                             onDownload = { pendingKhiDownload = track to snapshot },
+                                            onDelete = {
+                                                graph.downloads.deleteDownloadedTrack(
+                                                    source = DownloadSource.KHINSIDER,
+                                                    trackUrl = track.url,
+                                                )
+                                            },
                                         )
                                     },
                                 )
@@ -475,6 +500,13 @@ fun DownloadsScreen() {
                                                     )
                                                 }
                                             } else null,
+                                            onDelete = {
+                                                graph.downloads.deleteDownloadedTrack(
+                                                    source = job.source,
+                                                    songId = job.songId,
+                                                    trackUrl = if (job.source == DownloadSource.KHINSIDER) job.requestUrl else null,
+                                                )
+                                            },
                                         )
                                     },
                                 )
@@ -484,6 +516,49 @@ fun DownloadsScreen() {
                 }
             }
         }
+    }
+
+    val deletingAlbum = pendingDeleteAlbum
+    if (deletingAlbum != null) {
+        AlertDialog(
+            onDismissRequest = { pendingDeleteAlbum = null },
+            title = { Text("Delete album from device?") },
+            text = {
+                Text(
+                    if (deleteAlbumFailed) {
+                        "Some files could not be deleted. Check storage access and try again."
+                    } else {
+                        "This deletes all downloaded track versions for '${deletingAlbum.name}' from this device."
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val deleted = graph.downloads.deleteDownloadedAlbum(
+                            source = deletingAlbum.key.source,
+                            albumName = deletingAlbum.name,
+                            artist = deletingAlbum.artist,
+                            identity = deletingAlbum.key.identity,
+                            songIds = deletingAlbum.jobs.mapNotNull { it.songId }.toSet(),
+                            trackUrls = deletingAlbum.jobs
+                                .filter { it.source == DownloadSource.KHINSIDER }
+                                .map { it.requestUrl }
+                                .toSet(),
+                        )
+                        if (deleted) {
+                            expandedAlbum = null
+                            pendingDeleteAlbum = null
+                        } else {
+                            deleteAlbumFailed = true
+                        }
+                    },
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteAlbum = null }) { Text("Cancel") }
+            },
+        )
     }
 }
 
@@ -542,6 +617,7 @@ private fun DownloadsAlbumRow(
     expanded: Boolean,
     onToggle: () -> Unit,
     onPlay: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
     val chevron by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
@@ -553,7 +629,7 @@ private fun DownloadsAlbumRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .clickable { onToggle() }
+            .combinedClickable(onClick = onToggle, onLongClick = onLongClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
