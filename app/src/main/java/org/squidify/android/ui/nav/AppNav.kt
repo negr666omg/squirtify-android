@@ -267,9 +267,6 @@ fun AppNavHost(onExitApp: () -> Unit) {
                 composable(Routes.HOME) {
                     HomeScreen(
                         onAlbumClick = { navController.navigate(Routes.album(it.id)) },
-                        onKhiAlbumClick = { url ->
-                            navController.navigate(Routes.khiAlbum(url))
-                        },
                     )
                 }
                 composable(Routes.SEARCH) {

@@ -32,7 +32,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.squidify.android.App
 import org.squidify.android.data.Album
-import org.squidify.android.data.DownloadSource
 import org.squidify.android.data.HistoryEntry
 import org.squidify.android.ui.components.CoverArt
 import org.squidify.android.ui.components.ErrorRetry
@@ -40,20 +39,9 @@ import org.squidify.android.ui.components.LoadingShelf
 import org.squidify.android.ui.components.SectionHeader
 import org.squidify.android.ui.components.coverArtUrl
 
-/** One album derived from the on-device listening history. */
-private data class RecentAlbum(
-    val key: String,
-    val title: String,
-    val artist: String?,
-    val coverUrl: String?,
-    val albumId: String?,          // Squidify album route
-    val khiAlbumUrl: String?,      // KHInsider album route
-)
-
 @Composable
 fun HomeScreen(
     onAlbumClick: (Album) -> Unit,
-    onKhiAlbumClick: (String) -> Unit = {},
 ) {
     val graph = App.graph()
     val subsonic = graph.subsonic
@@ -77,27 +65,9 @@ fun HomeScreen(
     val explore = feed.explore
     val error = feed.error
 
-    // Recently played on THIS device: the local history grouped into albums.
-    // (The account is guest, so the server's "recent" list reflects everyone.)
-    val localRecent = remember(history) {
-        history
-            .groupBy { entry -> historyAlbumKey(entry) }
-            .map { (_, entries) ->
-                val e = entries.first()
-                RecentAlbum(
-                    key = historyAlbumKey(e),
-                    title = e.album ?: e.title,
-                    artist = e.artist,
-                    coverUrl = e.coverUrl
-                        ?: e.coverArtId?.let { App.graph().subsonic.coverUrl(it, 480) },
-                    albumId = e.albumId?.takeIf { e.source == DownloadSource.SQUIDIFY },
-                    khiAlbumUrl = e.khiTrackUrl
-                        ?.takeIf { e.source == DownloadSource.KHINSIDER }
-                        ?.substringBeforeLast('/'),
-                )
-            }
-            .take(20)
-    }
+    // Recently played is a track shelf, not an album-grouped history shelf.
+    val localRecent = remember(history) { history.distinctBy { it.songId }.take(20) }
+    val recentSongs = remember(localRecent) { localRecent.map { it.toPlayerSong() } }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -141,7 +111,7 @@ fun HomeScreen(
                     Column {
                         SectionHeader(title = "Recently played")
                         Spacer(Modifier.height(4.dp))
-                        RecentShelf(localRecent, onAlbumClick, onKhiAlbumClick)
+                        RecentTrackShelf(localRecent) { index -> graph.player.play(recentSongs, index) }
                         Spacer(Modifier.height(8.dp))
                     }
                 }
@@ -164,49 +134,31 @@ fun HomeScreen(
     }
 }
 
-internal fun historyAlbumKey(e: HistoryEntry): String =
-    if (e.source == DownloadSource.KHINSIDER) {
-        // Different games can publish identically named albums. The page URL
-        // is the stable album identity; track URLs share the same parent page.
-        val albumUrl = e.khiTrackUrl
-            ?.substringBeforeLast('/')
-            ?.takeIf { it.isNotBlank() && it != e.khiTrackUrl }
-        "khi:${albumUrl ?: "unknown:${e.album ?: e.title}"}"
-    } else {
-        "sq:${e.albumId ?: e.album ?: e.title}"
-    }
-
 @Composable
-private fun RecentShelf(
-    albums: List<RecentAlbum>,
-    onAlbumClick: (Album) -> Unit,
-    onKhiAlbumClick: (String) -> Unit,
+private fun RecentTrackShelf(
+    entries: List<HistoryEntry>,
+    onTrackClick: (Int) -> Unit,
 ) {
+    val graph = App.graph()
     LazyRow(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        items(albums.size, key = { albums[it].key }) { i ->
-            val a = albums[i]
-            RecentAlbumCard(
-                title = a.title,
-                artist = a.artist,
-                coverUrl = a.coverUrl,
-                onClick = {
-                    when {
-                        a.albumId != null -> onAlbumClick(
-                            Album(id = a.albumId, name = a.title, artist = a.artist),
-                        )
-                        a.khiAlbumUrl != null -> onKhiAlbumClick(a.khiAlbumUrl)
-                    }
-                },
+        items(entries.size, key = { "${entries[it].playedAt}-${entries[it].songId}" }) { i ->
+            val entry = entries[i]
+            RecentTrackCard(
+                title = entry.title,
+                artist = entry.artist ?: entry.album,
+                coverUrl = entry.coverUrl
+                    ?: entry.coverArtId?.let { graph.subsonic.coverUrl(it, 480) },
+                onClick = { onTrackClick(i) },
             )
         }
     }
 }
 
 @Composable
-private fun RecentAlbumCard(
+private fun RecentTrackCard(
     title: String,
     artist: String?,
     coverUrl: String?,
@@ -236,47 +188,12 @@ private fun RecentAlbumCard(
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
         Text(
-            text = artist ?: "",
+            text = artist ?: "Unknown artist",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
     }
 }
-
-@Composable
-private fun ShelfSection(title: String?, albums: List<Album>?, onAlbumClick: (Album) -> Unit) {
-    Column {
-        if (title != null) SectionHeader(title = title)
-        when {
-            albums == null -> LoadingShelf(height = 190.dp)
-            albums.isEmpty() -> {}
-            else -> LazyRow(
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                items(albums.size, key = { albums[it].id }) { i ->
-                    org.squidify.android.ui.components.AlbumCard(
-                        album = albums[i],
-                        onClick = { onAlbumClick(albums[i]) },
-                        coverUrl = albums[i].coverArtUrl(480),
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-    }
-}
-
-fun Album.coverArtUrl(size: Int = 480): String? =
-    App.graph().subsonic.coverUrl(coverArt ?: id.let { "al-$it" }, size)
-
-fun org.squidify.android.data.Artist.coverArtUrl(size: Int = 300): String? =
-    App.graph().subsonic.coverUrl(coverArt, size)
-
-fun SongCover(song: org.squidify.android.data.Song): String? =
-    App.graph().subsonic.coverUrl(song.coverArt ?: song.albumId?.let { "al-$it" }, 480)
