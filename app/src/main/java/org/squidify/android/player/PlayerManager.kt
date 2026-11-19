@@ -426,11 +426,10 @@ class PlayerManager(
                 val incomingIndex = _queue.value.indexOfFirst { it.id == mediaItem?.mediaId }
                 val incoming = _queue.value.getOrNull(incomingIndex)
                 if (previous != null && incoming != null && albumIdentity(previous) != albumIdentity(incoming)) {
-                    val previousAlbum = albumIdentity(previous)
-                    val nextInAlbum = (( _currentIndex.value + 1) until _queue.value.size)
-                        .firstOrNull { albumIdentity(_queue.value[it]) == previousAlbum }
-                    val targetIndex = nextInAlbum
-                        ?: _queue.value.indexOfFirst { albumIdentity(it) == previousAlbum }.takeIf { it >= 0 }
+                    val targetIndex = nextAlbumQueueIndex(
+                        albumIdentities = _queue.value.map(::albumIdentity),
+                        currentIndex = _currentIndex.value,
+                    )
                     if (targetIndex != null) {
                         AppLog.i(TAG, "Repeat album: skipping to '${_queue.value[targetIndex].title}'")
                         p.seekTo(targetIndex, 0L)
@@ -1807,11 +1806,10 @@ class PlayerManager(
         val next = cur + 1
         return when (_repeatMode.value) {
             REPEAT_TRACK -> null
-            REPEAT_ALBUM -> {
-                val album = albumIdentity(current)
-                (next until q.size).firstOrNull { albumIdentity(q[it]) == album }
-                    ?: q.indexOfFirst { albumIdentity(it) == album }.takeIf { it >= 0 }
-            }
+            REPEAT_ALBUM -> nextAlbumQueueIndex(
+                albumIdentities = q.map(::albumIdentity),
+                currentIndex = cur,
+            )
             REPEAT_QUEUE -> if (next < q.size) next else 0
             else -> next.takeIf { it < q.size }
         }
