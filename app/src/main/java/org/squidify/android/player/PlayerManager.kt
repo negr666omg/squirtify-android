@@ -78,7 +78,6 @@ class PlayerManager(
     /** Re-binds the MediaSession when the active player changes. */
     private var sessionRebinder: ((Player) -> Unit)? = null
     private var sessionBoundTo: Player? = null
-    private var expectedPlayerRepeatMode: Int? = null
 
     /** A play() that arrived before the playback service finished attaching
      *  its players (fast tap right after a cold start) — replayed on attach
@@ -559,10 +558,12 @@ class PlayerManager(
 
         override fun onRepeatModeChanged(repeatMode: Int) {
             AppLog.i(TAG, "Media3 repeat mode → ${repeatModeName(repeatMode)}")
-            if (expectedPlayerRepeatMode == repeatMode) {
-                expectedPlayerRepeatMode = null
-                return
+            val appModePlayerEquivalent = when (_repeatMode.value) {
+                REPEAT_TRACK -> Player.REPEAT_MODE_ONE
+                REPEAT_QUEUE -> Player.REPEAT_MODE_ALL
+                else -> Player.REPEAT_MODE_OFF
             }
+            if (appModePlayerEquivalent == repeatMode) return
             _repeatMode.value = when (repeatMode) {
                 Player.REPEAT_MODE_ONE -> REPEAT_TRACK
                 Player.REPEAT_MODE_ALL -> REPEAT_QUEUE
@@ -1332,7 +1333,12 @@ class PlayerManager(
 
     fun cycleRepeat() {
         val nextMode = (_repeatMode.value + 1) % 4
-        AppLog.i(TAG, "User: repeat → ${repeatModeName(nextMode)}")
+        AppLog.i(TAG, "User: repeat → ${when (nextMode) {
+            REPEAT_TRACK -> "TRACK"
+            REPEAT_ALBUM -> "ALBUM"
+            REPEAT_QUEUE -> "QUEUE"
+            else -> "OFF"
+        }}")
         setRepeatMode(nextMode)
     }
 
@@ -1343,7 +1349,6 @@ class PlayerManager(
             REPEAT_QUEUE -> Player.REPEAT_MODE_ALL
             else -> Player.REPEAT_MODE_OFF
         }
-        expectedPlayerRepeatMode = playerMode
         activeP?.repeatMode = playerMode
         standbyP?.repeatMode = playerMode
         _repeatMode.value = safeMode
