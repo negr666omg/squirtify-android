@@ -273,10 +273,6 @@ fun AppNavHost(onExitApp: () -> Unit) {
                         }
                     }
                 }
-            },                            }
-                        }
-                    }
-                }
             },
         ) { padding ->
             NavHost(
