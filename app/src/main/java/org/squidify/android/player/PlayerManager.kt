@@ -1725,6 +1725,7 @@ class PlayerManager(
         val current = q.getOrNull(cur) ?: return null
         val next = cur + 1
         return when (_repeatMode.value) {
+            REPEAT_TRACK -> null
             REPEAT_ALBUM -> {
                 if (next < q.size && albumIdentity(q[next]) == albumIdentity(current)) next
                 else q.indexOfFirst { albumIdentity(it) == albumIdentity(current) }.takeIf { it >= 0 }
@@ -2207,6 +2208,7 @@ class PlayerManager(
                 REPEAT_QUEUE -> Player.REPEAT_MODE_ALL
                 else -> Player.REPEAT_MODE_OFF
             }
+            standbyP?.repeatMode = p.repeatMode
             p.setMediaItems(restored.map { buildMediaItem(it) }, local.currentIndex, local.positionMs)
             p.prepare()
             _currentIndex.value = local.currentIndex

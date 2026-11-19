@@ -777,6 +777,7 @@ private fun PlayingTab(
                 // Player.REPEAT_MODE_ONE = 1, Player.REPEAT_MODE_ALL = 2
                 val icon = when (repeatMode) {
                     1 -> SqIcons.RepeatOne
+                    2 -> SqIcons.Disc
                     else -> SqIcons.Repeat
                 }
                 Icon(
@@ -1212,7 +1213,11 @@ private fun QueueTab(modifier: Modifier = Modifier) {
             IconButton(onClick = { player.cycleRepeat() }) {
                 Icon(
                     // Player.REPEAT_MODE_ONE = 1, Player.REPEAT_MODE_ALL = 2
-                    imageVector = if (repeatMode == 1) SqIcons.RepeatOne else SqIcons.Repeat,
+                    imageVector = when (repeatMode) {
+                        1 -> SqIcons.RepeatOne
+                        2 -> SqIcons.Disc
+                        else -> SqIcons.Repeat
+                    },
                     contentDescription = when (repeatMode) {
                         1 -> "Repeat track"
                         2 -> "Repeat album"
