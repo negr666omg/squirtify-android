@@ -187,18 +187,20 @@ fun AppNavHost(onExitApp: () -> Unit) {
                             onNext = { player.next() },
                             onOpen = { sheet.open() },
                         )
-                        androidx.compose.foundation.layout.Spacer(
-                            Modifier.padding(bottom = 4.dp),
-                        )
                     }
                     Surface(
-                        shape = RoundedCornerShape(50),
+                        shape = RoundedCornerShape(
+                            topStart = 12.dp,
+                            topEnd = 12.dp,
+                            bottomEnd = 24.dp,
+                            bottomStart = 24.dp,
+                        ),
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         tonalElevation = 2.dp,
                         shadowElevation = 4.dp,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                            .padding(horizontal = 12.dp)
                             .navigationBarsPadding(),
                     ) {
                         Row(
@@ -221,15 +223,16 @@ fun AppNavHost(onExitApp: () -> Unit) {
                                         )
                                         .clickable {
                                             if (currentRoute != dest.route) {
-                                                val fromStackedScreen =
-                                                    currentRoute != null && currentRoute !in destinations.map { it.route }
-                                                navController.navigate(dest.route) {
-                                                    if (fromStackedScreen) {
+                                                // Keep top-level destinations in the real back stack.
+                                                // This makes Home -> Downloads -> Settings -> Back
+                                                // return to Downloads instead of jumping to Home.
+                                                val returnedToExisting = navController.popBackStack(
+                                                    dest.route,
+                                                    inclusive = false,
+                                                )
+                                                if (!returnedToExisting) {
+                                                    navController.navigate(dest.route) {
                                                         launchSingleTop = true
-                                                    } else {
-                                                        popUpTo(Routes.HOME) { saveState = true }
-                                                        launchSingleTop = true
-                                                        restoreState = true
                                                     }
                                                 }
                                             }
