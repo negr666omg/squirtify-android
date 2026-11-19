@@ -23,13 +23,16 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -49,6 +52,7 @@ import kotlinx.coroutines.launch
 import org.squidify.android.App
 import org.squidify.android.data.Album
 import org.squidify.android.data.Song
+import org.squidify.android.data.StreamQuality
 import org.squidify.android.player.PlayerSong
 import org.squidify.android.ui.components.CoverArt
 import org.squidify.android.ui.components.CoverViewer
@@ -57,7 +61,6 @@ import org.squidify.android.ui.components.EmptyState
 import org.squidify.android.ui.components.ErrorRetry
 import org.squidify.android.ui.components.LoadingShelf
 import org.squidify.android.ui.components.SongRow
-import org.squidify.android.ui.components.SquidifyAlbumDownloadQualityDialog
 import org.squidify.android.ui.components.pressScale
 import org.squidify.android.ui.screens.library.SongActionsHandler
 import org.squidify.android.ui.theme.SqIcons
@@ -300,7 +303,7 @@ fun AlbumScreen(
 
     if (showAlbumDownloadDialog && songs != null) {
         val list = songs!!
-        SquirtifyAlbumDownloadQualityDialog(
+        AlbumDownloadQualityPicker(
             trackCount = list.size,
             sourceDescription = list.firstOrNull()?.formatDescription?.takeIf { it.isNotBlank() },
             onDismiss = { showAlbumDownloadDialog = false },
@@ -318,6 +321,56 @@ fun AlbumScreen(
             onDismiss = { showCoverViewer = false },
         )
     }
+}
+
+
+@Composable
+private fun AlbumDownloadQualityPicker(
+    trackCount: Int,
+    sourceDescription: String?,
+    onDismiss: () -> Unit,
+    onConfirm: (StreamQuality) -> Unit,
+) {
+    val current = App.graph().settings.state().value.streamingQuality
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Download album — $trackCount tracks") },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                sourceDescription?.let {
+                    Text(
+                        text = "Source: $it",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+                StreamQuality.entries.forEach { quality ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onConfirm(quality) }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = quality == current,
+                            onClick = { onConfirm(quality) },
+                        )
+                        Text(
+                            text = quality.label,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 @Composable
