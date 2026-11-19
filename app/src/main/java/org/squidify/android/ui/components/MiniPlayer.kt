@@ -2,6 +2,7 @@
 
 package org.squidify.android.ui.components
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -31,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -58,6 +60,7 @@ fun MiniPlayer(
     val graph = App.graph()
     val player = graph.player
     val settings by graph.settings.state().collectAsState()
+    val hapticView = LocalView.current
     val isPlaying by player.isPlaying.collectAsState()
     val isBuffering by player.isBuffering.collectAsState()
     val playbackError by player.playbackError.collectAsState()
@@ -160,7 +163,10 @@ fun MiniPlayer(
                     }
                 }
                 IconButton(
-                    onClick = onTogglePlay,
+                    onClick = {
+                        if (settings.hapticsEnabled) hapticView.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        onTogglePlay()
+                    },
                     interactionSource = playIsr,
                     modifier = Modifier.pressScale(playIsr, pressedScale = 0.88f),
                 ) {
