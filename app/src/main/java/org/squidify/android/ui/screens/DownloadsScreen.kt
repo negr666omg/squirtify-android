@@ -123,7 +123,7 @@ fun DownloadsScreen() {
     // Offline library collapses multiple encodes of one song to the best
     // available version; the download registry still retains every file.
     val done = graph.downloads.completedAudio()
-    val storage = graph.downloads.storageUsedBytes()
+    val storage = remember(jobs) { graph.downloads.storageUsedBytes() }
 
     // Compose keys must be unique across the WHOLE LazyColumn. Job ids are
     // unique after the manager's healing, but this is the last line of

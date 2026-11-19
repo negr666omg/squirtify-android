@@ -565,6 +565,10 @@ class DownloadManager(
     private fun deleteJobFile(job: DownloadJob): Boolean {
         val uri = job.contentUri
         if (uri != null) {
+            // Do not drop the registry entry while a granted SAF volume is
+            // disconnected; documentExists() alone cannot distinguish that
+            // from a genuinely deleted document.
+            if (uri.startsWith("content://") && !storage.treeReachable()) return false
             if (storage.deleteDocument(uri)) return true
             // A stale registry record whose file is already gone can be
             // cleaned up, but a still-visible document must remain registered.
