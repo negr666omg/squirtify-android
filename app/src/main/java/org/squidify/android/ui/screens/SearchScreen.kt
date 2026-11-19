@@ -228,9 +228,19 @@ fun SearchScreen(
                     .padding(top = 18.dp, bottom = 2.dp),
             ) {
                 Text(
-                    text = "Search",
-                    style = MaterialTheme.typography.headlineLarge,
+                    text = "DISCOVER",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = "Find your sound.",
+                    style = MaterialTheme.typography.displaySmall,
                     color = MaterialTheme.colorScheme.onBackground,
+                )
+                Text(
+                    text = "Search the library, albums and artists.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -252,7 +262,7 @@ fun SearchScreen(
                     }
                 },
                 singleLine = true,
-                shape = RoundedCornerShape(28.dp),
+                shape = RoundedCornerShape(30.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 10.dp),
@@ -299,8 +309,8 @@ fun SearchScreen(
                     ) {
                         items(history.size) { i ->
                             Surface(
-                                shape = RoundedCornerShape(50),
-                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 modifier = Modifier.clickable {
                                     query = history[i]
                                     runSearch(history[i])
@@ -309,8 +319,8 @@ fun SearchScreen(
                                 Text(
                                     text = history[i],
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                                 )
                             }
                         }
