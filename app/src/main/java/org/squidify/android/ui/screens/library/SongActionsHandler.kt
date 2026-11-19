@@ -12,7 +12,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.squidify.android.App
 import org.squidify.android.data.DownloadSource
 import org.squidify.android.data.Song
@@ -43,6 +45,7 @@ class SongActionsHandler(
     private var deleteOverride by mutableStateOf<(() -> Boolean)?>(null)
     private var showDeleteConfirmation by mutableStateOf(false)
     private var deleteFailed by mutableStateOf(false)
+    private var deleteInProgress by mutableStateOf(false)
 
     fun show(
         s: Song,
@@ -60,6 +63,7 @@ class SongActionsHandler(
         deleteOverride = onDelete
         showDeleteConfirmation = false
         deleteFailed = false
+        deleteInProgress = false
     }
 
     fun dismiss() {
@@ -72,6 +76,7 @@ class SongActionsHandler(
         deleteOverride = null
         showDeleteConfirmation = false
         deleteFailed = false
+        deleteInProgress = false
     }
 
     @Composable
@@ -145,11 +150,20 @@ class SongActionsHandler(
                 },
                 confirmButton = {
                     TextButton(
+                        enabled = !deleteInProgress,
                         onClick = {
-                            val deleted = deleteOverride?.invoke() == true
-                            if (deleted) dismiss() else deleteFailed = true
+                            val action = deleteOverride ?: return@TextButton
+                            if (deleteInProgress) return@TextButton
+                            deleteInProgress = true
+                            scope.launch {
+                                val deleted = runCatching {
+                                    withContext(Dispatchers.IO) { action() }
+                                }.getOrDefault(false)
+                                deleteInProgress = false
+                                if (deleted) dismiss() else deleteFailed = true
+                            }
                         },
-                    ) { Text("Delete") }
+                    ) { Text(if (deleteInProgress) "Deleting…" else "Delete") }
                 },
                 dismissButton = {
                     TextButton(onClick = { showDeleteConfirmation = false }) { Text("Cancel") }

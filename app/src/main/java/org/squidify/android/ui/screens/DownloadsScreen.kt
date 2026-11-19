@@ -39,7 +39,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -105,6 +109,7 @@ internal fun downloadJobAlbumKey(job: DownloadJob, resolvedAlbumId: String? = jo
 @Composable
 fun DownloadsScreen() {
     val graph = App.graph()
+    val scope = rememberCoroutineScope()
     val jobs by graph.downloads.jobs.collectAsState()
     val historyEntries by graph.history.entries.collectAsState()
     val favSongs by graph.favorites.songs.collectAsState()
@@ -123,7 +128,7 @@ fun DownloadsScreen() {
     // Offline library collapses multiple encodes of one song to the best
     // available version; the download registry still retains every file.
     val done = graph.downloads.completedAudio()
-    val storage = remember(jobs) { graph.downloads.storageUsedBytes() }
+    val storage = remember(done) { graph.downloads.storageUsedBytes() }
 
     // Compose keys must be unique across the WHOLE LazyColumn. Job ids are
     // unique after the manager's healing, but this is the last line of
@@ -212,6 +217,7 @@ fun DownloadsScreen() {
     var pendingKhiDownload by remember { mutableStateOf<Pair<KhiTrack, OfflineAlbumSnapshot>?>(null) }
     var pendingDeleteAlbum by remember { mutableStateOf<AlbumGroup?>(null) }
     var deleteAlbumFailed by remember { mutableStateOf(false) }
+    var deleteAlbumInProgress by remember { mutableStateOf(false) }
 
     fun playGroup(group: AlbumGroup, startIndex: Int = 0, shuffled: Boolean = false) {
         val songs = group.jobs.map { job ->
@@ -534,26 +540,36 @@ fun DownloadsScreen() {
             },
             confirmButton = {
                 TextButton(
+                    enabled = !deleteAlbumInProgress,
                     onClick = {
-                        val deleted = graph.downloads.deleteDownloadedAlbum(
-                            source = deletingAlbum.key.source,
-                            albumName = deletingAlbum.name,
-                            artist = deletingAlbum.artist,
-                            identity = deletingAlbum.key.identity,
-                            songIds = deletingAlbum.jobs.mapNotNull { it.songId }.toSet(),
-                            trackUrls = deletingAlbum.jobs
-                                .filter { it.source == DownloadSource.KHINSIDER }
-                                .map { it.requestUrl }
-                                .toSet(),
-                        )
-                        if (deleted) {
-                            expandedAlbum = null
-                            pendingDeleteAlbum = null
-                        } else {
-                            deleteAlbumFailed = true
+                        if (deleteAlbumInProgress) return@TextButton
+                        deleteAlbumInProgress = true
+                        scope.launch {
+                            val deleted = runCatching {
+                                withContext(Dispatchers.IO) {
+                                    graph.downloads.deleteDownloadedAlbum(
+                                        source = deletingAlbum.key.source,
+                                        albumName = deletingAlbum.name,
+                                        artist = deletingAlbum.artist,
+                                        identity = deletingAlbum.key.identity,
+                                        songIds = deletingAlbum.jobs.mapNotNull { it.songId }.toSet(),
+                                        trackUrls = deletingAlbum.jobs
+                                            .filter { it.source == DownloadSource.KHINSIDER }
+                                            .map { it.requestUrl }
+                                            .toSet(),
+                                    )
+                                }
+                            }.getOrDefault(false)
+                            deleteAlbumInProgress = false
+                            if (deleted) {
+                                expandedAlbum = null
+                                pendingDeleteAlbum = null
+                            } else {
+                                deleteAlbumFailed = true
+                            }
                         }
                     },
-                ) { Text("Delete") }
+                ) { Text(if (deleteAlbumInProgress) "Deleting…" else "Delete") }
             },
             dismissButton = {
                 TextButton(onClick = { pendingDeleteAlbum = null }) { Text("Cancel") }
