@@ -340,26 +340,19 @@ class PlayerManager(
     ) {
         if (player !== activeP || songs.isEmpty()) return
         val index = requestedIndex.coerceIn(0, songs.lastIndex)
-        val restoredSongs = songs.toMutableList()
-        val current = restoredSongs[index]
-        if (current.source == org.squidify.android.data.DownloadSource.KHINSIDER &&
-            !current.khiTrackUrl.isNullOrBlank() &&
-            downloads.downloadedUriForKhi(current.khiTrackUrl) == null
-        ) {
-            try {
-                // Reuse KhiClient's short-lived resolver cache when possible;
-                // if the link expired, refresh it before preparing the new player.
-                restoredSongs[index] = resolveKhi(current)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                // Keep the previous signed URL as a fallback. ExoPlayer will
-                // report a proper playback error if that URL has expired too.
-                AppLog.w(TAG, "Could not refresh the restored KHInsider URL: ${error.message}")
-            }
+        // Refresh every KHInsider item, not just the current one: a service
+        // recreation can happen after the signed URLs for upcoming queue items
+        // have expired too. Stable track-page URLs are the only persisted IDs.
+        val restoredSongs = try {
+            resolveKhiQueue(songs, forceRefresh = true)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            AppLog.w(TAG, "Could not refresh KHInsider URLs for the restored queue: ${error.message}")
+            songs
         }
         if (player !== activeP) return
-        val queue = restoredSongs.toList()
+        val queue = restoredSongs
         _queue.value = queue
         if (!_shuffle.value || baseQueue.size != queue.size) baseQueue = queue
         timeOffsetBaseMs = 0L
