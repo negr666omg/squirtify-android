@@ -48,7 +48,6 @@ import kotlinx.coroutines.launch
 import org.squidify.android.App
 import org.squidify.android.data.KhiAlbumSummary
 import org.squidify.android.data.Song
-import org.squidify.android.downloads.downloadStatusFor
 import org.squidify.android.player.PlayerSong
 import org.squidify.android.ui.components.KhiDownloadQualityDialog
 import org.squidify.android.ui.components.MiniPlayer
@@ -110,7 +109,6 @@ fun AppNavHost(onExitApp: () -> Unit) {
     // Now-Playing sheet — ten times per second, which read as ~20 fps.
     val queue by player.queue.collectAsState()
     val idx by player.currentIndex.collectAsState()
-    val downloads by graph.downloads.jobs.collectAsState()
 
     // The Now-Playing sheet: ONE float drives its open/close glide and its
     // finger drags, and it is read exclusively inside a graphicsLayer in
@@ -366,7 +364,6 @@ fun AppNavHost(onExitApp: () -> Unit) {
                 },
                 isHearted = current?.id in favSongIds,
                 onDownload = { song -> pendingDownload = song },
-                downloadStatus = current?.let { downloadStatusFor(it, downloads) },
                 lyricsProvider = { song, provider ->
                     if (song.source == org.squidify.android.data.DownloadSource.SQUIDIFY) {
                         graph.lyrics.forSong(
