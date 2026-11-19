@@ -234,6 +234,7 @@ fun KhiAlbumScreen(
                                 ) {
                                     val playIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
                                     val shufIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                                    val queueIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
                                     val dlIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
                                     FilledIconButton(
                                         onClick = { playAll(0) },
@@ -261,6 +262,24 @@ fun KhiAlbumScreen(
                                         Icon(
                                             SqIcons.Shuffle,
                                             contentDescription = "Shuffle",
+                                            modifier = Modifier.size(24.dp),
+                                        )
+                                    }
+                                    FilledTonalIconButton(
+                                        onClick = {
+                                            val songs = a.tracks.map {
+                                                PlayerSong.fromKhi(a.name, it.title, it.url, it.duration, graph.khi.imageUrl(a.coverUrl))
+                                            }
+                                            scope.launch { player.addToQueue(songs) }
+                                        },
+                                        interactionSource = queueIsr,
+                                        modifier = Modifier
+                                            .size(52.dp)
+                                            .pressScale(queueIsr, pressedScale = 0.92f),
+                                    ) {
+                                        Icon(
+                                            SqIcons.MusicNote,
+                                            contentDescription = "Add album to queue",
                                             modifier = Modifier.size(24.dp),
                                         )
                                     }
