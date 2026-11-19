@@ -257,8 +257,7 @@ fun AlbumScreen(
                                 onClick = { showAlbumDownloadDialog = true },
                                 interactionSource = dlIsr,
                                 modifier = Modifier
-                                    .width(56.dp)
-                                    .height(56.dp)
+                                    .size(56.dp)
                                     .pressScale(dlIsr, pressedScale = 0.92f),
                                 shape = RoundedCornerShape(16.dp),
                             ) {
