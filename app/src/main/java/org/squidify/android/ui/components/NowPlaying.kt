@@ -89,6 +89,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.squidify.android.App
 import org.squidify.android.data.DownloadStatus
+import org.squidify.android.downloads.downloadStatusFor
 import org.squidify.android.data.KhiQuality
 import org.squidify.android.data.LyricsProvider
 import org.squidify.android.data.LyricsResult
@@ -111,7 +112,6 @@ fun NowPlayingScreen(
     onToggleHeart: (PlayerSong) -> Unit,
     isHearted: Boolean,
     onDownload: (PlayerSong) -> Unit,
-    downloadStatus: DownloadStatus?,
     lyricsProvider: suspend (PlayerSong, LyricsProvider) -> LyricsResult?,
     onOpenAlbum: (PlayerSong, Boolean) -> Unit,
     onOpenArtist: (PlayerSong) -> Unit,
@@ -287,7 +287,6 @@ fun NowPlayingScreen(
                     repeatMode = repeatMode,
                     playbackTempo = settings.playbackTempo,
                     isHearted = isHearted,
-                    downloadStatus = downloadStatus,
                     scrollingText = settings.scrollingText,
                     hideArtist = settings.hideNowPlayingArtist,
                     onTogglePlay = {
@@ -335,7 +334,6 @@ fun NowPlayingScreen(
     if (showQualitySheet) {
         QualityInfoSheet(
             song = current,
-            downloadStatus = downloadStatus,
             onDismiss = { showQualitySheet = false },
         )
     }
@@ -482,6 +480,8 @@ private fun PlayingTab(
 ) {
     val graph = App.graph()
     val settings = graph.settings.state().value
+    val downloadJobs by graph.downloads.jobs.collectAsState()
+    val downloadStatus = remember(current, downloadJobs) { downloadStatusFor(current, downloadJobs) }
 
     // interaction sources for M3 press physics on the transport controls
     val playIsr = remember { MutableInteractionSource() }
@@ -876,6 +876,8 @@ fun QualityInfoSheet(
     val graph = App.graph()
     val scope = rememberCoroutineScope()
     val settings by graph.settings.state().collectAsState()
+    val downloadJobs by graph.downloads.jobs.collectAsState()
+    val downloadStatus = remember(song, downloadJobs) { downloadStatusFor(song, downloadJobs) }
     val context = LocalContext.current
     var info by remember { mutableStateOf<Song?>(null) }
     var infoError by remember { mutableStateOf<String?>(null) }
