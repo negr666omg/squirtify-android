@@ -42,6 +42,8 @@ import org.squidify.android.data.StreamQuality
 import org.squidify.android.data.SubsonicClient
 import org.squidify.android.downloads.DownloadManager
 import org.squidify.android.util.AppLog
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.Random
 import java.util.concurrent.ConcurrentHashMap
 
@@ -68,6 +70,7 @@ class PlayerManager(
     private val history: ListenHistory,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val queuePrefs = context.getSharedPreferences("playback_queue", Context.MODE_PRIVATE)
 
     private var activeP: Player? = null
     private var standbyP: Player? = null
@@ -642,6 +645,7 @@ class PlayerManager(
         failedPlayRequest = null
         AppLog.i(TAG, "Track → ${currentSong?.title ?: "?"} (index ${p.currentMediaItemIndex})")
         currentSong?.let { history.record(it) }
+        saveQueue()
         maybePrefetchNext()
     }
 
@@ -847,6 +851,7 @@ class PlayerManager(
         _currentIndex.value = index
         _positionMs.value = 0L
         _durationMs.value = song.durationMs
+        saveQueue()
         scope.launch {
             try {
                 if (settings.state().value.fullBuffer && playbackUri(song) != null && !isFullyCached(song)) {
@@ -1320,6 +1325,7 @@ class PlayerManager(
             it.volume = 1f
         }
         _queue.value = emptyList()
+        clearLocalQueue()
         _currentIndex.value = -1
         _positionMs.value = 0
         _durationMs.value = 0
@@ -1984,6 +1990,14 @@ class PlayerManager(
     }
 
     private fun saveQueue() {
+        val songsNow = _queue.value
+        if (songsNow.isEmpty()) {
+            clearLocalQueue()
+        } else {
+            // Local persistence is synchronous and private to this installation.
+            // KHInsider signed direct URLs are deliberately never serialized.
+            persistLocalQueue(songsNow)
+        }
         saveJob?.cancel()
         saveJob = scope.launch {
             delay(1500)
@@ -2002,8 +2016,117 @@ class PlayerManager(
         }
     }
 
+    private fun persistLocalQueue(songs: List<PlayerSong>) {
+        runCatching {
+            val items = JSONArray()
+            songs.forEach { song ->
+                items.put(JSONObject().apply {
+                    put("id", song.id)
+                    put("title", song.title)
+                    put("artist", song.artist)
+                    put("album", song.album)
+                    put("durationMs", song.durationMs)
+                    put("coverArtId", song.coverArtId)
+                    put("coverUrl", song.coverUrl)
+                    put("source", song.source.name)
+                    put("albumId", song.albumId)
+                    put("artistId", song.artistId)
+                    put("khiTrackUrl", song.khiTrackUrl)
+                    put("starred", song.starred)
+                })
+            }
+            val root = JSONObject()
+                .put("version", 1)
+                .put("songs", items)
+                .put("currentIndex", _currentIndex.value)
+                .put("positionMs", _positionMs.value.coerceAtLeast(0L))
+                .put("shuffle", _shuffle.value)
+                .put("repeatMode", _repeatMode.value)
+            queuePrefs.edit().putString(KEY_LOCAL_QUEUE, root.toString()).apply()
+        }.onFailure { AppLog.w(TAG, "Could not persist local queue: ${it.message}") }
+    }
+
+    private fun clearLocalQueue() {
+        queuePrefs.edit().remove(KEY_LOCAL_QUEUE).apply()
+    }
+
+    private data class LocalQueueSnapshot(
+        val songs: List<PlayerSong>,
+        val currentIndex: Int,
+        val positionMs: Long,
+        val shuffle: Boolean,
+        val repeatMode: Int,
+    )
+
+    private fun readLocalQueue(): LocalQueueSnapshot? = runCatching {
+        val raw = queuePrefs.getString(KEY_LOCAL_QUEUE, null) ?: return null
+        val root = JSONObject(raw)
+        val items = root.optJSONArray("songs") ?: return null
+        val songs = buildList {
+            for (i in 0 until items.length()) {
+                val item = items.optJSONObject(i) ?: continue
+                val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
+                val source = runCatching {
+                    org.squidify.android.data.DownloadSource.valueOf(item.optString("source", "SQUIDIFY"))
+                }.getOrDefault(org.squidify.android.data.DownloadSource.SQUIDIFY)
+                add(PlayerSong(
+                    id = id,
+                    title = item.optString("title", id),
+                    artist = item.optString("artist").takeIf { it.isNotBlank() },
+                    album = item.optString("album").takeIf { it.isNotBlank() },
+                    durationMs = item.optLong("durationMs").coerceAtLeast(0L),
+                    coverArtId = item.optString("coverArtId").takeIf { it.isNotBlank() },
+                    coverUrl = item.optString("coverUrl").takeIf { it.isNotBlank() },
+                    source = source,
+                    albumId = item.optString("albumId").takeIf { it.isNotBlank() },
+                    artistId = item.optString("artistId").takeIf { it.isNotBlank() },
+                    khiTrackUrl = item.optString("khiTrackUrl").takeIf { it.isNotBlank() },
+                    // Never restore a signed KHInsider direct URL; resolve it again.
+                    khiDirectUrl = null,
+                    starred = item.optBoolean("starred", false),
+                ))
+            }
+        }
+        if (songs.isEmpty()) return null
+        LocalQueueSnapshot(
+            songs = songs,
+            currentIndex = root.optInt("currentIndex", 0).coerceIn(0, songs.lastIndex),
+            positionMs = root.optLong("positionMs", 0L).coerceAtLeast(0L),
+            shuffle = root.optBoolean("shuffle", false),
+            repeatMode = root.optInt("repeatMode", Player.REPEAT_MODE_OFF)
+                .coerceIn(Player.REPEAT_MODE_OFF, Player.REPEAT_MODE_ONE),
+        )
+    }.onFailure { AppLog.w(TAG, "Could not read local queue: ${it.message}") }.getOrNull()
+
     private suspend fun tryRestoreQueue() {
         if (_queue.value.isNotEmpty()) return
+        val local = readLocalQueue()
+        if (local != null) {
+            // Re-resolve KHInsider page URLs because signed media URLs are
+            // short-lived and are intentionally excluded from local storage.
+            val restored = try {
+                resolveKhiQueue(local.songs, forceRefresh = true)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                AppLog.w(TAG, "Some restored KHInsider links could not be refreshed: ${error.message}")
+                local.songs
+            }
+            if (_queue.value.isNotEmpty() || pendingPlayRequest != null) return
+            val p = activeP ?: return
+            baseQueue = restored
+            _queue.value = restored
+            _shuffle.value = local.shuffle
+            _repeatMode.value = local.repeatMode
+            p.repeatMode = local.repeatMode
+            p.setMediaItems(restored.map { buildMediaItem(it) }, local.currentIndex, local.positionMs)
+            p.prepare()
+            _currentIndex.value = local.currentIndex
+            _positionMs.value = local.positionMs
+            _durationMs.value = restored.getOrNull(local.currentIndex)?.durationMs ?: 0L
+            AppLog.i(TAG, "Restored local queue: ${restored.size} tracks, index ${local.currentIndex}, pos ${local.positionMs} ms")
+            return
+        }
         try {
             val state = subsonic.getPlayQueue() ?: run {
                 AppLog.d(TAG, "No server play queue to restore")
@@ -2040,6 +2163,7 @@ class PlayerManager(
 
     companion object {
         private const val TAG = "Player"
+        private const val KEY_LOCAL_QUEUE = "queue_snapshot_v1"
         private const val CF_NONE = 0
         private const val CF_OVERLAP = 1
         private const val CF_FADEOUT_ONLY = 2
