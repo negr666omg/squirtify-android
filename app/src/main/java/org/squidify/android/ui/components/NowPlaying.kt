@@ -870,7 +870,6 @@ private data class KhiFileInfo(
 @Composable
 fun QualityInfoSheet(
     song: PlayerSong,
-    downloadStatus: DownloadStatus?,
     onDismiss: () -> Unit,
 ) {
     val graph = App.graph()
