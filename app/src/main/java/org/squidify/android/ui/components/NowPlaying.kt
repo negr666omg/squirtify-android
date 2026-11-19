@@ -1461,71 +1461,71 @@ private fun PlaybackRateSheet(onDismiss: () -> Unit) {
                 onClick = { apply(1f, 1f, linked) },
                 modifier = Modifier.align(Alignment.Start),
             ) { Text("Reset to normal") }
-        }
-    }
 
-    val target = editTarget
-    if (target != null) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 12.dp),
-        ) {
-            OutlinedTextField(
-                value = exactInput,
-                onValueChange = { newValue: String ->
-                    exactInput = newValue.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
-                    exactInputError = false
-                },
-                label = {
-                    Text(
-                        when (target) {
-                            "tempo" -> if (linked) "Exact tempo & pitch" else "Exact tempo"
-                            else -> "Exact pitch"
+            val target = editTarget
+            if (target != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                ) {
+                    OutlinedTextField(
+                        value = exactInput,
+                        onValueChange = { newValue: String ->
+                            exactInput = newValue.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
+                            exactInputError = false
                         },
+                        label = {
+                            Text(
+                                when (target) {
+                                    "tempo" -> if (linked) "Exact tempo & pitch" else "Exact tempo"
+                                    else -> "Exact pitch"
+                                },
+                            )
+                        },
+                        suffix = { Text("×") },
+                        singleLine = true,
+                        isError = exactInputError,
+                        supportingText = {
+                            Text(
+                                if (exactInputError) "Enter a value from 0.25 to 4.00."
+                                else "Allowed range: 0.25×–4.00×",
+                            )
+                        },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Decimal,
+                            imeAction = ImeAction.Done,
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(exactFocusRequester),
                     )
-                },
-                suffix = { Text("×") },
-                singleLine = true,
-                isError = exactInputError,
-                supportingText = {
-                    Text(
-                        if (exactInputError) "Enter a value from 0.25 to 4.00."
-                        else "Allowed range: 0.25×–4.00×",
-                    )
-                },
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Decimal,
-                    imeAction = ImeAction.Done,
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(exactFocusRequester),
-            )
-            Row(
-                modifier = Modifier.align(Alignment.End),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = {
-                    editTarget = null
-                    keyboard?.hide()
-                }) { Text("Cancel") }
-                TextButton(
-                    onClick = {
-                        val value = exactInput.replace(',', '.').toFloatOrNull()
-                        if (value != null && value.isFinite() && value in 0.25f..4f) {
-                            if (target == "tempo") {
-                                apply(value, if (linked) value else pitch, linked)
-                            } else {
-                                apply(tempo, value, false)
-                            }
+                    Row(
+                        modifier = Modifier.align(Alignment.End),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = {
                             editTarget = null
                             keyboard?.hide()
-                        } else {
-                            exactInputError = true
-                        }
-                    },
-                ) { Text("Apply") }
+                        }) { Text("Cancel") }
+                        TextButton(
+                            onClick = {
+                                val value = exactInput.replace(',', '.').toFloatOrNull()
+                                if (value != null && value.isFinite() && value in 0.25f..4f) {
+                                    if (target == "tempo") {
+                                        apply(value, if (linked) value else pitch, linked)
+                                    } else {
+                                        apply(tempo, value, false)
+                                    }
+                                    editTarget = null
+                                    keyboard?.hide()
+                                } else {
+                                    exactInputError = true
+                                }
+                            },
+                        ) { Text("Apply") }
+                    }
+                }
             }
         }
     }
