@@ -120,14 +120,17 @@ fun DownloadsScreen() {
     val songActions = remember { SongActionsHandler() }
     songActions.Render()
 
-    val active = jobs.filter { it.status == DownloadStatus.RUNNING }
-    val queued = jobs.filter { it.status == DownloadStatus.QUEUED }
-    val paused = jobs.filter { it.status == DownloadStatus.PAUSED }
-    val pending = queued + paused
-    val failed = jobs.filter { it.status == DownloadStatus.FAILED }
+    // Keep the derived lists stable across unrelated local UI state changes.
+    // completedAudio() groups every finished quality version by track, so
+    // running it on each expand/collapse recomposition made large libraries lag.
+    val active = remember(jobs) { jobs.filter { it.status == DownloadStatus.RUNNING } }
+    val queued = remember(jobs) { jobs.filter { it.status == DownloadStatus.QUEUED } }
+    val paused = remember(jobs) { jobs.filter { it.status == DownloadStatus.PAUSED } }
+    val pending = remember(queued, paused) { queued + paused }
+    val failed = remember(jobs) { jobs.filter { it.status == DownloadStatus.FAILED } }
     // Offline library collapses multiple encodes of one song to the best
     // available version; the download registry still retains every file.
-    val done = graph.downloads.completedAudio()
+    val done = remember(jobs) { graph.downloads.completedAudio() }
     val storage = remember(done) { graph.downloads.storageUsedBytes() }
 
     // Compose keys must be unique across the WHOLE LazyColumn. Job ids are
