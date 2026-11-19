@@ -294,11 +294,16 @@ class PlayerManager(
         active.addListener(activeListener)
         standby.addListener(standbyListener)
         applyPlaybackRateToPlayers()
-        _repeatMode.value = when (active.repeatMode) {
-            Player.REPEAT_MODE_ONE -> REPEAT_TRACK
-            Player.REPEAT_MODE_ALL -> REPEAT_QUEUE
-            else -> REPEAT_OFF
+        // Keep the app-managed repeat mode across service recreation. A new
+        // ExoPlayer starts in REPEAT_MODE_OFF, so reading its default here
+        // would silently erase Repeat Album / Repeat Queue from the snapshot.
+        val restoredRepeatPlayerMode = when (_repeatMode.value) {
+            REPEAT_TRACK -> Player.REPEAT_MODE_ONE
+            REPEAT_QUEUE -> Player.REPEAT_MODE_ALL
+            else -> Player.REPEAT_MODE_OFF
         }
+        active.repeatMode = restoredRepeatPlayerMode
+        standby.repeatMode = restoredRepeatPlayerMode
         AppLog.i(TAG, "Two players attached (active + crossfade standby)")
         scope.launch {
             val pending = pendingPlayRequest
