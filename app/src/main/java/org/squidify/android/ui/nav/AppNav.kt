@@ -168,30 +168,25 @@ fun AppNavHost(onExitApp: () -> Unit) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             bottomBar = {
-                Column {
-                    if (current != null) {
-                        MiniPlayer(
-                            song = current,
-                            onTogglePlay = { player.togglePlayPause() },
-                            onNext = { player.next() },
-                            onOpen = { sheet.open() },
-                        )
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(
-                            topStart = 12.dp,
-                            topEnd = 12.dp,
-                            bottomEnd = 24.dp,
-                            bottomStart = 24.dp,
-                        ),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        tonalElevation = 2.dp,
-                        shadowElevation = 4.dp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp)
-                            .navigationBarsPadding(),
-                    ) {
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 2.dp,
+                    shadowElevation = 4.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, top = 4.dp)
+                        .navigationBarsPadding(),
+                ) {
+                    Column {
+                        if (current != null) {
+                            MiniPlayer(
+                                song = current,
+                                onTogglePlay = { player.togglePlayPause() },
+                                onNext = { player.next() },
+                                onOpen = { sheet.open() },
+                            )
+                        }
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

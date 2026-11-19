@@ -22,7 +22,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -31,9 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.squidify.android.App
@@ -72,24 +69,11 @@ fun MiniPlayer(
     val scroll = settings.scrollingText
     val playIsr = remember { MutableInteractionSource() }
     val nextIsr = remember { MutableInteractionSource() }
-    val miniPlayerShape = RoundedCornerShape(
-        topStart = 24.dp,
-        topEnd = 24.dp,
-        bottomEnd = 12.dp,
-        bottomStart = 12.dp,
-    )
-    Surface(
-        shape = miniPlayerShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        tonalElevation = 2.dp,
-        shadowElevation = 4.dp,
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 12.dp, end = 12.dp, top = 4.dp)
-            .clip(miniPlayerShape)
             .clickable(onClick = onOpen),
     ) {
-        Column {
             LinearProgressIndicator(
                 progress = {
                     val d = duration.value
@@ -201,7 +185,6 @@ fun MiniPlayer(
                     )
                 }
             }
-        }
     }
 }
 

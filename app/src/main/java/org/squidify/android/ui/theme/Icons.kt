@@ -161,6 +161,18 @@ object SqIcons {
         }
     }
 
+    val PlaylistAdd: ImageVector by lazy {
+        icon("PlaylistAdd") {
+            moveTo(3f, 5f); horizontalLineTo(15f); verticalLineTo(7f); horizontalLineTo(3f); close()
+            moveTo(3f, 10f); horizontalLineTo(13f); verticalLineTo(12f); horizontalLineTo(3f); close()
+            moveTo(3f, 15f); horizontalLineTo(11f); verticalLineTo(17f); horizontalLineTo(3f); close()
+            moveTo(18f, 13f); horizontalLineTo(20f); verticalLineTo(17f)
+            horizontalLineTo(24f); verticalLineTo(19f); horizontalLineTo(20f)
+            verticalLineTo(23f); horizontalLineTo(18f); verticalLineTo(19f)
+            horizontalLineTo(14f); verticalLineTo(17f); horizontalLineTo(18f); close()
+        }
+    }
+
     val Disc: ImageVector by lazy {
         icon("Disc") {
             moveTo(12f, 2f)

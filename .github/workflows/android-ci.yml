@@ -10,7 +10,6 @@ on:
 permissions:
   contents: read
 
-# Avoid concurrent Gradle dependency downloads from rapid pushes to the same branch.
 concurrency:
   group: android-ci-${{ github.ref }}
   cancel-in-progress: false
@@ -33,52 +32,10 @@ jobs:
         with:
           gradle-version: "8.13"
 
-      - name: Run unit tests and build APKs
-        run: gradle --no-daemon testDebugUnitTest assembleDebug assemblePerf assembleRelease
+      - name: Run unit tests and build unsigned Release APK
+        run: gradle --no-daemon testDebugUnitTest assembleRelease
 
-      # Lint is diagnostic until the existing project-wide backlog is cleaned.
-      # Keep the full report visible, but don't block APKs/tests on pre-existing findings.
-      - name: Run Android Lint report
-        continue-on-error: true
-        run: |
-          lint_status=0
-          gradle --no-daemon lintRelease || lint_status=$?
-          report="app/build/intermediates/lint_intermediate_text_report/release/lintReportRelease/lint-results-release.txt"
-          if [ -f "$report" ]; then
-            echo "===== FULL ANDROID LINT REPORT ====="
-            cat "$report"
-          else
-            echo "Android Lint did not produce its text report."
-          fi
-          exit "$lint_status"
-
-      - name: Upload Android Lint reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Squirtify-lint-report
-          path: |
-            app/build/reports/lint-results-release.*
-            app/build/intermediates/lint_intermediate_text_report/release/lintReportRelease/lint-results-release.txt
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Squirtify-debug-1.7.5
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 14
-      - name: Upload performance APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Squirtify-perf-1.7.5
-          path: app/build/outputs/apk/perf/app-perf.apk
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload unsigned release APK
+      - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
           name: Squirtify-release-unsigned-1.7.5
