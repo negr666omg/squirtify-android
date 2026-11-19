@@ -196,3 +196,38 @@ private fun RecentTrackCard(
         )
     }
 }
+
+/** Shared album shelf used by Home and the other library screens. */
+@Composable
+private fun ShelfSection(title: String?, albums: List<Album>?, onAlbumClick: (Album) -> Unit) {
+    Column {
+        if (title != null) SectionHeader(title = title)
+        when {
+            albums == null -> LoadingShelf(height = 190.dp)
+            albums.isEmpty() -> Unit
+            else -> LazyRow(
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                items(albums.size, key = { albums[it].id }) { index ->
+                    val album = albums[index]
+                    org.squidify.android.ui.components.AlbumCard(
+                        album = album,
+                        onClick = { onAlbumClick(album) },
+                        coverUrl = album.coverArtUrl(480),
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+fun Album.coverArtUrl(size: Int = 480): String? =
+    App.graph().subsonic.coverUrl(coverArt ?: id.let { "al-$it" }, size)
+
+fun org.squidify.android.data.Artist.coverArtUrl(size: Int = 300): String? =
+    App.graph().subsonic.coverUrl(coverArt, size)
+
+fun SongCover(song: org.squidify.android.data.Song): String? =
+    App.graph().subsonic.coverUrl(song.coverArt ?: song.albumId?.let { "al-$it" }, 480)
