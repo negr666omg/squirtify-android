@@ -82,7 +82,7 @@ fun MiniPlayer(
         shadowElevation = 4.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, top = 4.dp)
+            .padding(start = 12.dp, end = 12.dp, top = 4.dp)
             .clip(miniPlayerShape)
             .clickable(onClick = onOpen),
     ) {
