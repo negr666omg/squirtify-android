@@ -100,15 +100,6 @@ fun SearchScreen(
         graph.settings.searchHistory.collect { history = it }
     }
 
-    // If KHInsider is disabled while this screen is retained in the back
-    // stack, don't leave the source filter pointing at a now-hidden source.
-    LaunchedEffect(settings.khiEnabled) {
-        if (!settings.khiEnabled && source == SearchSource.KHINSIDER) {
-            source = SearchSource.ALL
-            runSearch(query)
-        }
-    }
-
     fun runSearch(q: String) {
         searchJob?.cancel()
         loadMoreJob?.cancel()
@@ -185,6 +176,15 @@ fun SearchScreen(
                 // newer query that is still loading.
                 if (generation == searchGeneration) searching = false
             }
+        }
+    }
+
+    // If KHInsider is disabled while this screen is retained in the back
+    // stack, don't leave the source filter pointing at a now-hidden source.
+    LaunchedEffect(settings.khiEnabled) {
+        if (!settings.khiEnabled && source == SearchSource.KHINSIDER) {
+            source = SearchSource.ALL
+            runSearch(query)
         }
     }
 
