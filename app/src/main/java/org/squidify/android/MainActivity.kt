@@ -73,7 +73,9 @@ class MainActivity : ComponentActivity() {
         // Android 13+: the media notification needs the runtime notification
         // permission. Without it the player is invisible in the shade AND the
         // system media carousel never appears. Re-ask on every cold start:
-        // Android only shows the dialog twice, then silently denies — harmless.
+        // Android only shows the dialog twice, then silently denies — harmless.        // Ask once on Android 13+. If the user declines, respect that choice
+        // instead of reopening the permission dialog on every cold start.
+rmless.
         requestNotificationPermissionIfNeeded()
 
         // data may already live in fallback locations from before the user
@@ -180,10 +182,17 @@ class MainActivity : ComponentActivity() {
                 this, Manifest.permission.POST_NOTIFICATIONS,
             ) == PackageManager.PERMISSION_GRANTED
             if (!granted) {
-                AppLog.i("UI", "Requesting POST_NOTIFICATIONS permission")
-                ActivityCompat.requestPermissions(
-                    this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001,
-                )
+                val preferences = getSharedPreferences("squidify_storage", MODE_PRIVATE)
+                val alreadyAsked = preferences.getBoolean("notification_permission_asked", false)
+                if (!alreadyAsked) {
+                    // Persist before opening the system dialog so denial is
+                    // remembered even if Android recreates the activity.
+                    preferences.edit().putBoolean("notification_permission_asked", true).apply()
+                    AppLog.i("UI", "Requesting POST_NOTIFICATIONS permission for the first time")
+                    ActivityCompat.requestPermissions(
+                        this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001,
+                    )
+                }
             }
         }
     }
