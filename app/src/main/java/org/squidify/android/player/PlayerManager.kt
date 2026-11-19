@@ -861,17 +861,18 @@ class PlayerManager(
     }
 
     fun addToQueue(songs: List<PlayerSong>) {
-        val p = activeP ?: return
         if (songs.isEmpty()) return
         if (_queue.value.isEmpty()) {
+            // play() also defers safely when MediaSessionService hasn't attached yet.
             play(songs, 0)
             return
         }
+        val p = activeP
         _queue.value = _queue.value + songs
         // Keep the unshuffled baseline complete too, so disabling shuffle
         // never silently drops tracks added while shuffle was enabled.
         baseQueue = if (_shuffle.value) baseQueue + songs else _queue.value
-        p.addMediaItems(songs.map { buildMediaItem(it) })
+        p?.addMediaItems(songs.map { buildMediaItem(it) })
         if (cfState == CF_OVERLAP) {
             // The standby contains only the suffix starting at cfIncomingIdx.
             standbyP?.addMediaItems(songs.map { buildMediaItem(it) })
@@ -880,18 +881,18 @@ class PlayerManager(
     }
 
     fun playNext(songs: List<PlayerSong>) {
-        val p = activeP ?: return
         if (songs.isEmpty()) return
         if (_queue.value.isEmpty()) {
             play(songs, 0)
             return
         }
-        val at = (_currentIndex.value + 1).coerceAtMost(_queue.value.size)
+        val p = activeP
+        val at = (_currentIndex.value + 1).coerceIn(0, _queue.value.size)
         _queue.value = _queue.value.toMutableList().apply { addAll(at, songs) }
         // Preserve every item when shuffle is later disabled. The current
         // shuffled playback order still receives the new items immediately.
         baseQueue = if (_shuffle.value) baseQueue + songs else _queue.value
-        p.addMediaItems(at, songs.map { buildMediaItem(it) })
+        p?.addMediaItems(at, songs.map { buildMediaItem(it) })
         if (cfState == CF_OVERLAP) {
             val standbyAt = (at - cfIncomingIdx).coerceIn(0, standbyP?.mediaItemCount ?: 0)
             standbyP?.addMediaItems(standbyAt, songs.map { buildMediaItem(it) })
@@ -899,7 +900,7 @@ class PlayerManager(
         saveQueue()
     }
 
-    fun jumpTo(index: Int) {
+        fun jumpTo(index: Int) {
         if (index !in _queue.value.indices) return
         cancelPendingSwitch()
         cancelCrossfade()
@@ -942,42 +943,74 @@ class PlayerManager(
     }
 
     fun removeAt(index: Int) {
-        val p = activeP ?: return
-        if (index !in _queue.value.indices) return
+        val oldQueue = _queue.value
+        if (index !in oldQueue.indices) return
         if (cfState != CF_NONE) cancelCrossfade()
-        val cur = p.currentMediaItemIndex
-        val removedSong = _queue.value[index]
-        _queue.value = _queue.value.filterIndexed { i, _ -> i != index }
+        val p = activeP
+        val currentIndex = _currentIndex.value
+        val currentSongBeforeRemoval = oldQueue.getOrNull(currentIndex)
+        val removedSong = oldQueue[index]
+        val nextQueue = oldQueue.filterIndexed { i, _ -> i != index }
+        _queue.value = nextQueue
         if (_shuffle.value) {
             val baseIndex = baseQueue.indexOfFirst { it === removedSong }
             if (baseIndex >= 0) baseQueue = baseQueue.toMutableList().also { it.removeAt(baseIndex) }
         } else {
-            baseQueue = _queue.value
+            baseQueue = nextQueue
         }
-        p.removeMediaItem(index)
-        if (index == cur) {
+
+        if (p != null) {
+            p.removeMediaItem(index)
             _currentIndex.value = p.currentMediaItemIndex
+        } else {
+            val nextIndex = when {
+                nextQueue.isEmpty() -> -1
+                currentIndex < 0 -> 0
+                index < currentIndex -> currentIndex - 1
+                index > currentIndex -> currentIndex
+                else -> index.coerceAtMost(nextQueue.lastIndex)
+            }
+            _currentIndex.value = nextIndex
+            if (index == currentIndex || currentSongBeforeRemoval == null) {
+                _positionMs.value = 0L
+                _durationMs.value = nextQueue.getOrNull(nextIndex)?.durationMs ?: 0L
+            }
+        }
+        if (nextQueue.isEmpty()) {
+            _currentIndex.value = -1
+            _positionMs.value = 0L
+            _durationMs.value = 0L
+            _isPlaying.value = false
+            _isBuffering.value = false
+            _stalled.value = false
         }
         saveQueue()
     }
 
-    fun move(from: Int, to: Int) {
-        val p = activeP ?: return
+        fun move(from: Int, to: Int) {
         val q = _queue.value.toMutableList()
-        if (from !in q.indices || to !in q.indices) return
+        if (from !in q.indices || to !in q.indices || from == to) return
         if (cfState != CF_NONE) cancelCrossfade()
+        val p = activeP
+        val currentSongBeforeMove = q.getOrNull(_currentIndex.value)
         val item = q.removeAt(from)
         q.add(to, item)
         _queue.value = q
         // A manual reorder becomes the new baseline so turning shuffle off
         // does not unexpectedly undo the user's explicit queue arrangement.
         baseQueue = q
-        p.moveMediaItem(from, to)
-        _currentIndex.value = p.currentMediaItemIndex
+        if (p != null) {
+            p.moveMediaItem(from, to)
+            _currentIndex.value = p.currentMediaItemIndex
+        } else {
+            _currentIndex.value = currentSongBeforeMove?.let { current ->
+                q.indexOfFirst { it === current }.takeIf { it >= 0 }
+            } ?: _currentIndex.value.coerceIn(0, q.lastIndex)
+        }
         saveQueue()
     }
 
-    /**
+        /**
      * The service may have been recreated while PlayerManager kept its queue.
      * Recreate the media timeline before accepting transport commands.
      */
