@@ -161,7 +161,12 @@ fun AlbumScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
-                            shape = RoundedCornerShape(36.dp),
+                            shape = RoundedCornerShape(
+                                topStart = 38.dp,
+                                topEnd = 38.dp,
+                                bottomEnd = 38.dp,
+                                bottomStart = 18.dp,
+                            ),
                             color = MaterialTheme.colorScheme.surfaceContainerLow,
                         ) {
                             Column(
@@ -225,20 +230,19 @@ fun AlbumScreen(
                             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            val playIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
                             val shufIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
                             val dlIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                            FilledIconButton(
+                            androidx.compose.material3.FilledTonalButton(
                                 onClick = {
                                     scope.launch { player.play(list.map { PlayerSong.from(it) }, 0) }
                                 },
-                                interactionSource = playIsr,
                                 modifier = Modifier
-                                    .size(52.dp)
-                                    .pressScale(playIsr, pressedScale = 0.92f),
-                                colors = IconButtonDefaults.filledIconButtonColors(),
+                                    .weight(1f)
+                                    .height(52.dp),
                             ) {
-                                Icon(Icons.Filled.PlayArrow, contentDescription = "Play", modifier = Modifier.size(28.dp))
+                                Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(22.dp))
+                                Spacer(Modifier.width(7.dp))
+                                Text("Play")
                             }
                             FilledTonalIconButton(
                                 onClick = {
@@ -251,29 +255,27 @@ fun AlbumScreen(
                             ) {
                                 Icon(SqIcons.Shuffle, contentDescription = "Shuffle", modifier = Modifier.size(24.dp))
                             }
-                            val queueIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                            FilledTonalIconButton(
+                            androidx.compose.material3.FilledTonalButton(
                                 onClick = {
                                     scope.launch { player.addToQueue(list.map { PlayerSong.from(it) }) }
                                 },
-                                interactionSource = queueIsr,
-                                modifier = Modifier
-                                    .size(52.dp)
-                                    .pressScale(queueIsr, pressedScale = 0.92f),
+                                modifier = Modifier.height(52.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 13.dp),
                             ) {
                                 Icon(
                                     SqIcons.PlaylistAdd,
-                                    contentDescription = "Add album to queue",
-                                    modifier = Modifier.size(24.dp),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
                                 )
+                                Spacer(Modifier.width(6.dp))
+                                Text("Queue")
                             }
                             FilledTonalIconButton(
                                 onClick = { showAlbumDownloadDialog = true },
                                 interactionSource = dlIsr,
                                 modifier = Modifier
-                                    .size(56.dp)
+                                    .size(52.dp)
                                     .pressScale(dlIsr, pressedScale = 0.92f),
-                                shape = RoundedCornerShape(16.dp),
                             ) {
                                 Icon(SqIcons.Download, contentDescription = "Download album", modifier = Modifier.size(24.dp))
                             }

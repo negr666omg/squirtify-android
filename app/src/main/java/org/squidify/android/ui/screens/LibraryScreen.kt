@@ -1,12 +1,16 @@
 package org.squidify.android.ui.screens
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.PrimaryTabRow
-import androidx.compose.material3.Tab
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -14,6 +18,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import org.squidify.android.data.Album
 import org.squidify.android.data.Artist
@@ -24,10 +29,9 @@ import org.squidify.android.ui.screens.library.FavouriteSongsTab
 import org.squidify.android.ui.screens.library.HistoryTab
 
 /**
- * "Library" destination: what YOU listened to on this device, plus your
- * favourites. Server browsing lives in Search/Home.
+ * "Library" destination: listening history and saved music.
+ * Server browsing stays in Search/Home.
  */
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     onAlbumClick: (Album) -> Unit,
@@ -35,31 +39,76 @@ fun LibraryScreen(
     onGenreClick: (Genre) -> Unit,
     onPlaylistClick: (Playlist) -> Unit,
 ) {
-    val sections = listOf("History", "Favourite songs", "Favourite albums")
+    val sections = listOf("History", "Songs", "Albums")
     var selected by remember { mutableStateOf(0) }
 
     Column(Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(horizontal = 22.dp)
+                .padding(top = 22.dp, bottom = 16.dp),
         ) {
             Text(
+                text = "YOUR COLLECTION",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
                 text = "Your library",
-                style = MaterialTheme.typography.headlineLarge,
+                style = MaterialTheme.typography.displaySmall,
                 color = MaterialTheme.colorScheme.onBackground,
             )
+            Text(
+                text = "The music you've played and saved.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
-        PrimaryTabRow(selectedTabIndex = selected) {
-            sections.forEachIndexed { index, label ->
-                Tab(
-                    selected = selected == index,
-                    onClick = { selected = index },
-                    text = { Text(label) },
-                )
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            Row(
+                modifier = Modifier.padding(5.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                sections.forEachIndexed { index, label ->
+                    val isSelected = selected == index
+                    Surface(
+                        shape = RoundedCornerShape(24.dp),
+                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(24.dp))
+                            .clickable { selected = index },
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 5.dp, vertical = 13.dp),
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
             }
         }
-        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+
+        Box(Modifier.fillMaxSize()) {
             when (selected) {
                 0 -> HistoryTab(onAlbumClick = onAlbumClick, onArtistClick = onArtistClick)
                 1 -> FavouriteSongsTab()

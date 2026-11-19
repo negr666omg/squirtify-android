@@ -81,20 +81,20 @@ fun MiniPlayer(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(3.dp),
+                    .height(2.dp),
                 color = MaterialTheme.colorScheme.primary,
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
             )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 CoverArt(
                     url = song.coverArtUrl(),
-                    modifier = Modifier.size(48.dp),
-                    corner = 12.dp,
+                    modifier = Modifier.size(50.dp),
+                    corner = 16.dp,
                     contentDescription = song.album,
                 )
                 Column(

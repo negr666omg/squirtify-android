@@ -218,8 +218,8 @@ fun NowPlayingScreen(
                 // shifts Lyrics / Up Next to the right.
                 Surface(
                     modifier = Modifier.align(Alignment.Center),
-                    shape = RoundedCornerShape(28.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shape = RoundedCornerShape(30.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
                 ) {
                     Row(
                         modifier = Modifier.padding(4.dp),
@@ -447,7 +447,7 @@ private fun TabPill(label: String, selected: Boolean, onClick: () -> Unit) {
             style = MaterialTheme.typography.labelMedium,
             color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
             else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp),
         )
     }
 }
@@ -540,7 +540,14 @@ private fun PlayingTab(
                 Box(
                     modifier = Modifier
                         .size(side)
-                        .clip(RoundedCornerShape(36.dp))
+                        .clip(
+                            RoundedCornerShape(
+                                topStart = 42.dp,
+                                topEnd = 42.dp,
+                                bottomEnd = 42.dp,
+                                bottomStart = 18.dp,
+                            ),
+                        )
                         .clickable(onClick = onCoverTap),
                 ) {
                     CoverArt(
@@ -550,7 +557,7 @@ private fun PlayingTab(
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer { alpha = pulseAlpha?.value ?: 1f },
-                        corner = 36.dp,
+                        corner = 40.dp,
                         contentDescription = current.album,
                     )
                 }
@@ -559,6 +566,14 @@ private fun PlayingTab(
 
         Spacer(Modifier.height(16.dp))
 
+        Text(
+            text = "NOW PLAYING",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 5.dp),
+        )
         Text(
             text = current.title,
             style = MaterialTheme.typography.headlineLarge,
@@ -710,7 +725,10 @@ private fun PlayingTab(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp),
+                .clip(RoundedCornerShape(34.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .padding(horizontal = 5.dp, vertical = 4.dp)
+                .padding(bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(

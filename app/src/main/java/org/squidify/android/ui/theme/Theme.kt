@@ -88,32 +88,46 @@ private val SquidDarkColors = darkColorScheme(
 
 private val SquidTypography = Typography().let { base ->
     base.copy(
+        displayLarge = base.displayLarge.copy(
+            fontSize = 56.sp, lineHeight = 60.sp, fontWeight = FontWeight.ExtraBold,
+            letterSpacing = (-1.8).sp,
+        ),
+        displayMedium = base.displayMedium.copy(
+            fontSize = 46.sp, lineHeight = 52.sp, fontWeight = FontWeight.ExtraBold,
+            letterSpacing = (-1.4).sp,
+        ),
         displaySmall = base.displaySmall.copy(
-            fontSize = 38.sp, lineHeight = 44.sp, fontWeight = FontWeight.ExtraBold,
-            letterSpacing = (-1.1).sp,
+            fontSize = 40.sp, lineHeight = 46.sp, fontWeight = FontWeight.ExtraBold,
+            letterSpacing = (-1.2).sp,
         ),
         headlineLarge = base.headlineLarge.copy(
-            fontSize = 32.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold,
-            letterSpacing = (-0.8).sp,
+            fontSize = 34.sp, lineHeight = 40.sp, fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.9).sp,
         ),
         headlineMedium = base.headlineMedium.copy(
-            fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold,
-            letterSpacing = (-0.55).sp,
+            fontSize = 29.sp, lineHeight = 35.sp, fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.65).sp,
+        ),
+        headlineSmall = base.headlineSmall.copy(
+            fontSize = 25.sp, lineHeight = 31.sp, fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.4).sp,
         ),
         titleLarge = base.titleLarge.copy(
             fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold,
-            letterSpacing = (-0.25).sp,
+            letterSpacing = (-0.3).sp,
         ),
         titleMedium = base.titleMedium.copy(
             fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold,
         ),
+        bodyLarge = base.bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp),
+        labelLarge = base.labelLarge.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.1.sp),
     )
 }
 
 private val SquidShapes = Shapes(
     extraSmall = RoundedCornerShape(10.dp),
-    small = RoundedCornerShape(16.dp),
-    medium = RoundedCornerShape(22.dp),
-    large = RoundedCornerShape(28.dp),
-    extraLarge = RoundedCornerShape(36.dp),
+    small = RoundedCornerShape(18.dp),
+    medium = RoundedCornerShape(24.dp),
+    large = RoundedCornerShape(32.dp),
+    extraLarge = RoundedCornerShape(40.dp),
 )

@@ -214,7 +214,7 @@ fun AlbumCard(
             // (which also clips its artwork) during horizontal list scrolling.
             .background(
                 MaterialTheme.colorScheme.surfaceContainerLow,
-                RoundedCornerShape(26.dp),
+                RoundedCornerShape(28.dp),
             )
             .clickable(onClick = onClick)
             .padding(10.dp),
@@ -224,7 +224,7 @@ fun AlbumCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f),
-            corner = 20.dp,
+            corner = 22.dp,
             contentDescription = album.name,
         )
         Spacer(Modifier.height(8.dp))
@@ -363,7 +363,7 @@ fun SongRow(
                 // Keep the selected track capsule aligned with the mini-player edges.
                 .then(
                     if (isCurrent) Modifier.background(
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f),
+                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.92f),
                         shape = RoundedCornerShape(22.dp),
                     ) else Modifier,
                 )
@@ -374,7 +374,7 @@ fun SongRow(
                         Modifier.clickable(onClick = onClick)
                     },
                 )
-                .padding(horizontal = 14.dp, vertical = 10.dp),
+                .padding(horizontal = 14.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
         if (index != null && showIndex) {
@@ -400,7 +400,7 @@ fun SongRow(
             Text(
                 text = song.title,
                 style = MaterialTheme.typography.titleMedium,
-                color = if (isCurrent) MaterialTheme.colorScheme.onPrimaryContainer
+                color = if (isCurrent) MaterialTheme.colorScheme.onSecondaryContainer
                 else MaterialTheme.colorScheme.onBackground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

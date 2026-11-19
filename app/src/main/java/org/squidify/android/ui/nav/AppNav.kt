@@ -175,8 +175,13 @@ fun AppNavHost(onExitApp: () -> Unit) {
             containerColor = MaterialTheme.colorScheme.background,
             bottomBar = {
                 Surface(
-                    shape = RoundedCornerShape(32.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shape = RoundedCornerShape(
+                        topStart = 34.dp,
+                        topEnd = 34.dp,
+                        bottomStart = 22.dp,
+                        bottomEnd = 22.dp,
+                    ),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
                     tonalElevation = 3.dp,
                     shadowElevation = 3.dp,
                     modifier = Modifier
@@ -196,7 +201,7 @@ fun AppNavHost(onExitApp: () -> Unit) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(68.dp)
+                                .height(66.dp)
                                 .padding(horizontal = 8.dp, vertical = 6.dp),
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,

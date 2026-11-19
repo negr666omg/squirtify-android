@@ -153,7 +153,12 @@ fun HomeScreen(
                             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
                         )
                         Surface(
-                            shape = RoundedCornerShape(32.dp),
+                            shape = RoundedCornerShape(
+                                topStart = 36.dp,
+                                topEnd = 36.dp,
+                                bottomEnd = 36.dp,
+                                bottomStart = 18.dp,
+                            ),
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
@@ -163,8 +168,8 @@ fun HomeScreen(
                             ) {
                                 CoverArt(
                                     url = featuredAlbum.coverArtUrl(600),
-                                    modifier = Modifier.size(124.dp),
-                                    corner = 26.dp,
+                                    modifier = Modifier.size(128.dp),
+                                    corner = 28.dp,
                                     contentDescription = featuredAlbum.name,
                                 )
                                 Column(
