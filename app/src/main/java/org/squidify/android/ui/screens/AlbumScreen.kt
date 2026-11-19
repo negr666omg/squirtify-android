@@ -57,7 +57,7 @@ import org.squidify.android.ui.components.EmptyState
 import org.squidify.android.ui.components.ErrorRetry
 import org.squidify.android.ui.components.LoadingShelf
 import org.squidify.android.ui.components.SongRow
-import org.squidify.android.ui.components.SquirtifyAlbumDownloadQualityDialog
+import org.squidify.android.ui.components.SquidifyAlbumDownloadQualityDialog
 import org.squidify.android.ui.components.pressScale
 import org.squidify.android.ui.screens.library.SongActionsHandler
 import org.squidify.android.ui.theme.SqIcons
@@ -87,7 +87,7 @@ fun AlbumScreen(
         error = null
         try {
             val (a, s) = graph.subsonic.getAlbum(albumId)
-            graph.offlineLibrary.cacheSquirtify(a, s, a.coverArtUrl(600))
+            graph.offlineLibrary.cacheSquidify(a, s, a.coverArtUrl(600))
             album = a
             songs = s
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
