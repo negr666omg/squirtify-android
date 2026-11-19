@@ -416,7 +416,7 @@ fun AppNavHost(onExitApp: () -> Unit) {
                 song = s,
                 onDismiss = { pendingDownload = null },
                 onConfirm = { q ->
-                    graph.downloads.enqueueSquidify(s, q)
+                    graph.downloads.enqueueSquirtify(s, q)
                     pendingDownload = null
                 },
             )
