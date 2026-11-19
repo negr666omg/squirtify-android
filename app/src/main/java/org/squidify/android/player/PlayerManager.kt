@@ -826,6 +826,7 @@ class PlayerManager(
             val standbyAt = (at - cfIncomingIdx).coerceIn(0, standbyP?.mediaItemCount ?: 0)
             standbyP?.addMediaItems(standbyAt, songs.map { buildMediaItem(it) })
         }
+        saveQueue()
     }
 
     fun jumpTo(index: Int) {
