@@ -240,6 +240,18 @@ fun AlbumScreen(
                             ) {
                                 Icon(SqIcons.Shuffle, contentDescription = "Shuffle", modifier = Modifier.size(24.dp))
                             }
+                            val queueIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                            FilledTonalIconButton(
+                                onClick = {
+                                    scope.launch { player.addToQueue(list.map { PlayerSong.from(it) }) }
+                                },
+                                interactionSource = queueIsr,
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .pressScale(queueIsr, pressedScale = 0.92f),
+                            ) {
+                                Icon(SqIcons.MusicNote, contentDescription = "Add album to queue", modifier = Modifier.size(24.dp))
+                            }
                             FilledTonalIconButton(
                                 onClick = { showAlbumDownloadDialog = true },
                                 interactionSource = dlIsr,
