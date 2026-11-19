@@ -6,6 +6,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -52,6 +53,7 @@ import org.squidify.android.player.PlayerSong
 import org.squidify.android.ui.components.CoverArt
 import org.squidify.android.ui.components.EmptyState
 import org.squidify.android.ui.theme.SqIcons
+import org.squidify.android.ui.screens.library.SongActionsHandler
 import org.squidify.android.util.AppLog
 import org.squidify.android.util.Fmt
 
@@ -102,6 +104,8 @@ fun DownloadsScreen() {
     val settings by graph.settings.state().collectAsState()
     val hasInternet by graph.networkMonitor.hasValidatedInternet.collectAsState()
     val offlineMode = settings.offlineMode || !hasInternet
+    val songActions = remember { SongActionsHandler() }
+    songActions.Render()
 
     val active = jobs.filter { it.status == DownloadStatus.RUNNING }
     val queued = jobs.filter { it.status == DownloadStatus.QUEUED }
@@ -302,7 +306,7 @@ fun DownloadsScreen() {
                         name = group.name,
                         artist = group.artist,
                         coverUrl = group.coverUrl,
-                        trackCount = group.snapshot?.trackCount?.takeIf { it > 0 } ?: group.jobs.size,
+                        trackCount = group.jobs.size,
                         totalBytes = group.totalBytes,
                         expanded = expandedAlbum == group.key,
                         onToggle = {
@@ -316,66 +320,62 @@ fun DownloadsScreen() {
                         group.snapshot?.source == DownloadSource.SQUIDIFY &&
                             group.snapshot.tracks.isNotEmpty() -> {
                             val snapshot = group.snapshot
+                            val downloadedTracks = snapshot.tracks.mapNotNull { track ->
+                                group.jobs.firstOrNull { it.songId == track.id }?.let { job -> track to job }
+                            }
+                            val playerSongs = downloadedTracks.map { (track, _) ->
+                                PlayerSong.from(track).copy(coverUrl = snapshot.coverUrl)
+                            }
                             items(
-                                snapshot.tracks.size,
-                                key = { i -> "cached-${group.key.hashCode()}-${snapshot.tracks[i].id}" },
+                                downloadedTracks.size,
+                                key = { i -> "cached-${group.key.hashCode()}-${downloadedTracks[i].first.id}" },
                             ) { i ->
-                                val track = snapshot.tracks[i]
-                                val downloaded = group.jobs.firstOrNull { it.songId == track.id }
+                                val (track, downloaded) = downloadedTracks[i]
                                 CachedLibraryTrackRow(
                                     title = track.title,
                                     number = track.track,
-                                    subtitle = if (downloaded != null) {
-                                        listOfNotNull(
-                                            downloaded.qualityLabel.ifBlank { downloaded.format.uppercase() },
-                                            Fmt.bytes(downloaded.totalBytes.takeIf { it > 0 } ?: downloaded.bytes),
-                                            track.duration?.let { Fmt.duration(it.toLong()) },
-                                        ).joinToString(" · ")
-                                    } else {
-                                        listOfNotNull(track.suffix?.uppercase(), track.duration?.let { Fmt.duration(it.toLong()) }, "Not downloaded").joinToString(" · ")
-                                    },
-                                    downloaded = downloaded != null,
-                                    disabled = offlineMode && downloaded == null,
-                                    onPlay = {
-                                        val playerSongs = snapshot.tracks.map { song ->
-                                            PlayerSong.from(song).copy(coverUrl = snapshot.coverUrl)
-                                        }
-                                        graph.player.play(playerSongs, i)
-                                    },
+                                    subtitle = listOfNotNull(
+                                        downloaded.qualityLabel.ifBlank { downloaded.format.uppercase() },
+                                        Fmt.bytes(downloaded.totalBytes.takeIf { it > 0 } ?: downloaded.bytes),
+                                        track.duration?.let { Fmt.duration(it.toLong()) },
+                                    ).joinToString(" · "),
+                                    downloaded = true,
+                                    disabled = false,
+                                    onPlay = { graph.player.play(playerSongs, i) },
+                                    onLongClick = { songActions.show(track) },
                                 )
                             }
                         }
                         group.snapshot?.source == DownloadSource.KHINSIDER &&
                             group.snapshot.khiTracks.isNotEmpty() -> {
                             val snapshot = group.snapshot
+                            val downloadedTracks = snapshot.khiTracks.mapNotNull { track ->
+                                group.jobs.firstOrNull { it.requestUrl == track.url }?.let { job -> track to job }
+                            }
+                            val playerSongs = downloadedTracks.map { (track, _) ->
+                                PlayerSong.fromKhi(
+                                    snapshot.albumName,
+                                    track.title,
+                                    track.url,
+                                    track.duration,
+                                    snapshot.coverUrl,
+                                )
+                            }
                             items(
-                                snapshot.khiTracks.size,
-                                key = { i -> "cached-khi-${group.key.hashCode()}-$i-${snapshot.khiTracks[i].url}" },
+                                downloadedTracks.size,
+                                key = { i -> "cached-khi-${group.key.hashCode()}-$i-${downloadedTracks[i].first.url}" },
                             ) { i ->
-                                val track = snapshot.khiTracks[i]
-                                val downloaded = group.jobs.firstOrNull { it.requestUrl == track.url }
+                                val (track, downloaded) = downloadedTracks[i]
                                 CachedLibraryTrackRow(
                                     title = track.title,
                                     number = track.number.takeIf { it > 0 },
                                     subtitle = listOfNotNull(
                                         track.duration,
-                                        downloaded?.let { Fmt.bytes(it.totalBytes.takeIf { n -> n > 0 } ?: it.bytes) },
-                                        if (downloaded == null) "Not downloaded" else null,
+                                        Fmt.bytes(downloaded.totalBytes.takeIf { n -> n > 0 } ?: downloaded.bytes),
                                     ).joinToString(" · "),
-                                    downloaded = downloaded != null,
-                                    disabled = offlineMode && downloaded == null,
-                                    onPlay = {
-                                        val playerSongs = snapshot.khiTracks.map { item ->
-                                            PlayerSong.fromKhi(
-                                                snapshot.albumName,
-                                                item.title,
-                                                item.url,
-                                                item.duration,
-                                                snapshot.coverUrl,
-                                            )
-                                        }
-                                        graph.player.play(playerSongs, i)
-                                    },
+                                    downloaded = true,
+                                    disabled = false,
+                                    onPlay = { graph.player.play(playerSongs, i) },
                                 )
                             }
                         }
@@ -524,6 +524,7 @@ private fun CachedLibraryTrackRow(
     downloaded: Boolean,
     disabled: Boolean,
     onPlay: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val titleColor = if (disabled) {
         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.42f)
@@ -539,7 +540,7 @@ private fun CachedLibraryTrackRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = !disabled, onClick = onPlay)
+            .combinedClickable(enabled = !disabled, onClick = onPlay, onLongClick = onLongClick)
             .padding(horizontal = 28.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
