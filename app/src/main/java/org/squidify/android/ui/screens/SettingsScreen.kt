@@ -143,6 +143,7 @@ fun SettingsScreen() {
                 onAudioCache = { mb -> scope.launch { graph.settings.setAudioCacheMb(mb) } },
                 onImageCache = { mb -> scope.launch { graph.settings.setImageCacheMb(mb) } },
                 onClearAudioCache = { graph.clearMediaCache() },
+                onHapticsEnabled = { on -> scope.launch { graph.settings.setHapticsEnabled(on) } },
             )
             1 -> LogScreen()
         }
@@ -186,6 +187,7 @@ private fun GeneralSettings(
     onAudioCache: (Int) -> Unit,
     onImageCache: (Int) -> Unit,
     onClearAudioCache: () -> Unit,
+    onHapticsEnabled: (Boolean) -> Unit,
 ) {
     val graph = App.graph()
     val context = LocalContext.current
@@ -331,6 +333,11 @@ private fun GeneralSettings(
                     title = "Hide artist in Now Playing",
                     checked = settings.hideNowPlayingArtist,
                     onChange = onHideNowPlayingArtist,
+                )
+                SwitchRow(
+                    title = "Play/Pause haptics",
+                    checked = settings.hapticsEnabled,
+                    onChange = onHapticsEnabled,
                 )
             }
         }
