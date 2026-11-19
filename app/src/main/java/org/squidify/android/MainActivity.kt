@@ -70,12 +70,8 @@ class MainActivity : ComponentActivity() {
             AppLog.w("UI", "Could not start the playback service: ${t.javaClass.simpleName}: ${t.message}")
         }
 
-        // Android 13+: the media notification needs the runtime notification
-        // permission. Without it the player is invisible in the shade AND the
-        // system media carousel never appears. Re-ask on every cold start:
-        // Android only shows the dialog twice, then silently denies — harmless.        // Ask once on Android 13+. If the user declines, respect that choice
+        // Ask once on Android 13+. If the user declines, respect that choice
         // instead of reopening the permission dialog on every cold start.
-rmless.
         requestNotificationPermissionIfNeeded()
 
         // data may already live in fallback locations from before the user
