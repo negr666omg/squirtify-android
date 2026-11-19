@@ -48,6 +48,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.squidify.android.App
 import org.squidify.android.data.Album
@@ -104,7 +106,6 @@ fun AlbumScreen(
     val queue by player.queue.collectAsState()
     val idx by player.currentIndex.collectAsState()
     val downloads by graph.downloads.jobs.collectAsState()
-    val bufferProgress by player.bufferProgress.collectAsState()
     val isBufferingNow by player.isBuffering.collectAsState()
 
     // Resolve download metadata once per update instead of scanning every
@@ -268,12 +269,20 @@ fun AlbumScreen(
 
                     items(list.size, key = { list[it].id }) { i ->
                         val song = list[i]
+                        // Subscribe to only THIS track's prefetch progress. The
+                        // global map updates while a full track buffers; collecting
+                        // it at screen level forced the whole album list to recompose.
+                        val trackBufferProgress by remember(song.id) {
+                            player.bufferProgress
+                                .map { it[song.id] }
+                                .distinctUntilChanged()
+                        }.collectAsState(initial = null)
                         val isCurrent = currentSongId == song.id
                         val download = downloadBySongId[song.id]
                         val downloadStatus = download?.status
                         // Loading bar under the row: whole-track prefetch for
                         // playback, or an active download job
-                        val progress = bufferProgress[song.id]
+                        val progress = trackBufferProgress
                             ?: download?.takeIf {
                                 it.status == org.squidify.android.data.DownloadStatus.RUNNING
                             }?.progress
@@ -289,7 +298,7 @@ fun AlbumScreen(
                         // its trailing edge), not on the album header — the eye
                         // stays where the tap happened.
                         val loading = (isCurrent || highlighted) &&
-                            (isBufferingNow || bufferProgress.containsKey(song.id))
+                            (isBufferingNow || trackBufferProgress != null)
                         SongRow(
                             song = song,
                             index = i,
