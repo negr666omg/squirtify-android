@@ -1108,8 +1108,8 @@ class PlayerManager(
             return
         }
 
-        val transcodedStream = song.source
- == org.squidify.android.data.DownloadSource.SQUIDIFY &&
+        val transcodedStream = song.source ==
+            org.squidify.android.data.DownloadSource.SQUIDIFY &&
             settings.state().value.streamingQuality != StreamQuality.ORIGINAL &&
             downloads.downloadedUriFor(song.id) == null
         val metaDur = song.durationMs
