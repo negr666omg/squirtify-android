@@ -78,6 +78,7 @@ class PlayerManager(
     /** Re-binds the MediaSession when the active player changes. */
     private var sessionRebinder: ((Player) -> Unit)? = null
     private var sessionBoundTo: Player? = null
+    private var expectedPlayerRepeatMode: Int? = null
 
     /** A play() that arrived before the playback service finished attaching
      *  its players (fast tap right after a cold start) — replayed on attach
@@ -294,7 +295,11 @@ class PlayerManager(
         active.addListener(activeListener)
         standby.addListener(standbyListener)
         applyPlaybackRateToPlayers()
-        _repeatMode.value = active.repeatMode
+        _repeatMode.value = when (active.repeatMode) {
+            Player.REPEAT_MODE_ONE -> REPEAT_TRACK
+            Player.REPEAT_MODE_ALL -> REPEAT_QUEUE
+            else -> REPEAT_OFF
+        }
         AppLog.i(TAG, "Two players attached (active + crossfade standby)")
         scope.launch {
             val pending = pendingPlayRequest
@@ -398,10 +403,24 @@ class PlayerManager(
                 finalizeCrossfade()
                 return
             }
-            // a repeat-one loop must stay perfectly seamless: no UI churn, no fades
+            // Repeat-track is handled by ExoPlayer without a playlist transition.
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) {
-                AppLog.d(TAG, "Repeat-one loop: seamless restart of the same track")
+                AppLog.d(TAG, "Repeat-track loop: seamless restart of the same track")
                 return
+            }
+            // Repeat-album is app-managed: loop when playback crosses an album boundary.
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && _repeatMode.value == REPEAT_ALBUM) {
+                val previous = _queue.value.getOrNull(_currentIndex.value)
+                val incomingIndex = _queue.value.indexOfFirst { it.id == mediaItem?.mediaId }
+                val incoming = _queue.value.getOrNull(incomingIndex)
+                if (previous != null && incoming != null && albumIdentity(previous) != albumIdentity(incoming)) {
+                    val firstInAlbum = _queue.value.indexOfFirst { albumIdentity(it) == albumIdentity(previous) }
+                    if (firstInAlbum >= 0) {
+                        AppLog.i(TAG, "Repeat album: looping '${previous.album ?: previous.title}'")
+                        p.seekTo(firstInAlbum, 0L)
+                        return
+                    }
+                }
             }
             onTrackChanged(p)
         }
@@ -476,14 +495,32 @@ class PlayerManager(
                 applyPendingSeekIfAny()
             }
             if (srcState == Player.STATE_ENDED) {
-                // the tail was faded out (repeat off, last track) — restore volume
-                // so pressing play again isn't silent
+                if (_repeatMode.value == REPEAT_ALBUM) {
+                    val current = currentSong
+                    val firstInAlbum = current?.let { song ->
+                        _queue.value.indexOfFirst { albumIdentity(it) == albumIdentity(song) }
+                    } ?: -1
+                    if (firstInAlbum >= 0) {
+                        AppLog.i(TAG, "Repeat album: restarting '${current?.album ?: current?.title}'")
+                        src?.seekTo(firstInAlbum, 0L)
+                        src?.prepare()
+                        src?.playWhenReady = true
+                        return
+                    }
+                }
+                // End of queue: stop playback but retain the queue for replay.
                 src?.volume = 1f
                 if (cfState == CF_FADEOUT_ONLY) {
                     cfState = CF_NONE
                     crossfadeRampJob?.cancel()
                     crossfadeRampJob = null
                 }
+                _isPlaying.value = false
+                _isBuffering.value = false
+                _stalled.value = false
+                _positionMs.value = _durationMs.value
+                abandonAudioFocus()
+                saveQueue()
             }
         }
 
@@ -521,12 +558,17 @@ class PlayerManager(
         }
 
         override fun onRepeatModeChanged(repeatMode: Int) {
-            AppLog.i(TAG, "Repeat mode → ${repeatModeName(repeatMode)}")
-            // keep the app-level state in sync — the player's repeat mode can
-            // also be changed externally (media session command from the
-            // shade, Bluetooth, assistant), and the crossfade loop decision
-            // reads this state
-            _repeatMode.value = repeatMode
+            AppLog.i(TAG, "Media3 repeat mode → ${repeatModeName(repeatMode)}")
+            if (expectedPlayerRepeatMode == repeatMode) {
+                expectedPlayerRepeatMode = null
+                return
+            }
+            _repeatMode.value = when (repeatMode) {
+                Player.REPEAT_MODE_ONE -> REPEAT_TRACK
+                Player.REPEAT_MODE_ALL -> REPEAT_QUEUE
+                else -> REPEAT_OFF
+            }
+            saveQueue()
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -1289,20 +1331,32 @@ class PlayerManager(
     }
 
     fun cycleRepeat() {
-        val p = positionSource() ?: return
-        val nextMode = when (p.repeatMode) {
-            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
-            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
-            else -> Player.REPEAT_MODE_OFF
-        }
+        val nextMode = (_repeatMode.value + 1) % 4
         AppLog.i(TAG, "User: repeat → ${repeatModeName(nextMode)}")
         setRepeatMode(nextMode)
     }
 
     fun setRepeatMode(mode: Int) {
-        activeP?.repeatMode = mode
-        standbyP?.repeatMode = mode
-        _repeatMode.value = mode
+        val safeMode = mode.coerceIn(REPEAT_OFF, REPEAT_QUEUE)
+        val playerMode = when (safeMode) {
+            REPEAT_TRACK -> Player.REPEAT_MODE_ONE
+            REPEAT_QUEUE -> Player.REPEAT_MODE_ALL
+            else -> Player.REPEAT_MODE_OFF
+        }
+        expectedPlayerRepeatMode = playerMode
+        activeP?.repeatMode = playerMode
+        standbyP?.repeatMode = playerMode
+        _repeatMode.value = safeMode
+        saveQueue()
+    }
+
+    private fun albumIdentity(song: PlayerSong): String {
+        val album = song.albumId?.takeIf { it.isNotBlank() }
+            ?: song.album?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+            ?: song.id
+        val artist = song.artistId?.takeIf { it.isNotBlank() }
+            ?: song.artist?.trim()?.lowercase().orEmpty()
+        return "${song.source.name}:$album:$artist"
     }
 
     fun stop() {
@@ -1663,10 +1717,15 @@ class PlayerManager(
     private fun nextIndexAfter(cur: Int): Int? {
         val q = _queue.value
         if (q.isEmpty()) return null
-        return when {
-            cur + 1 < q.size -> cur + 1
-            _repeatMode.value == Player.REPEAT_MODE_ALL -> 0
-            else -> null
+        val current = q.getOrNull(cur) ?: return null
+        val next = cur + 1
+        return when (_repeatMode.value) {
+            REPEAT_ALBUM -> {
+                if (next < q.size && albumIdentity(q[next]) == albumIdentity(current)) next
+                else q.indexOfFirst { albumIdentity(it) == albumIdentity(current) }.takeIf { it >= 0 }
+            }
+            REPEAT_QUEUE -> if (next < q.size) next else 0
+            else -> next.takeIf { it < q.size }
         }
     }
 
@@ -2093,8 +2152,7 @@ class PlayerManager(
             currentIndex = root.optInt("currentIndex", 0).coerceIn(0, songs.lastIndex),
             positionMs = root.optLong("positionMs", 0L).coerceAtLeast(0L),
             shuffle = root.optBoolean("shuffle", false),
-            repeatMode = root.optInt("repeatMode", Player.REPEAT_MODE_OFF)
-                .coerceIn(Player.REPEAT_MODE_OFF, Player.REPEAT_MODE_ONE),
+            repeatMode = root.optInt("repeatMode", REPEAT_OFF).coerceIn(REPEAT_OFF, REPEAT_QUEUE),
         )
     }.onFailure { AppLog.w(TAG, "Could not read local queue: ${it.message}") }.getOrNull()
 
@@ -2118,7 +2176,11 @@ class PlayerManager(
             _queue.value = restored
             _shuffle.value = local.shuffle
             _repeatMode.value = local.repeatMode
-            p.repeatMode = local.repeatMode
+            p.repeatMode = when (local.repeatMode) {
+                REPEAT_TRACK -> Player.REPEAT_MODE_ONE
+                REPEAT_QUEUE -> Player.REPEAT_MODE_ALL
+                else -> Player.REPEAT_MODE_OFF
+            }
             p.setMediaItems(restored.map { buildMediaItem(it) }, local.currentIndex, local.positionMs)
             p.prepare()
             _currentIndex.value = local.currentIndex
@@ -2164,6 +2226,10 @@ class PlayerManager(
     companion object {
         private const val TAG = "Player"
         private const val KEY_LOCAL_QUEUE = "queue_snapshot_v1"
+        const val REPEAT_OFF = 0
+        const val REPEAT_TRACK = 1
+        const val REPEAT_ALBUM = 2
+        const val REPEAT_QUEUE = 3
         private const val CF_NONE = 0
         private const val CF_OVERLAP = 1
         private const val CF_FADEOUT_ONLY = 2
