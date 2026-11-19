@@ -100,6 +100,15 @@ fun SearchScreen(
         graph.settings.searchHistory.collect { history = it }
     }
 
+    // If KHInsider is disabled while this screen is retained in the back
+    // stack, don't leave the source filter pointing at a now-hidden source.
+    LaunchedEffect(settings.khiEnabled) {
+        if (!settings.khiEnabled && source == SearchSource.KHINSIDER) {
+            source = SearchSource.ALL
+            runSearch(query)
+        }
+    }
+
     fun runSearch(q: String) {
         searchJob?.cancel()
         loadMoreJob?.cancel()
@@ -399,10 +408,10 @@ fun SearchScreen(
                         // hearts are local favourites
                         song = song.copy(starred = if (song.id in favSongIds) "now" else null),
                         onClick = {
-                            scope.launch {
-                                val list = songs!!.map { PlayerSong.from(it) }
-                                player.play(list, i)
-                            }
+                            // Snapshot this result set before launching so a
+                            // fast subsequent query cannot change what gets played.
+                            val list = songs.orEmpty().map { PlayerSong.from(it) }
+                            scope.launch { player.play(list, i) }
                         },
                         coverUrl = SongCover(song),
                         isCurrent = isCurrent,
