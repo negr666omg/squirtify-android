@@ -76,7 +76,7 @@ class SongActionsHandler(
                 song = s,
                 onDismiss = { showQualityDialog = false },
                 onConfirm = { q ->
-                    graph.downloads.enqueueSquidify(s, q)
+                    graph.downloads.enqueueSquirtify(s, q)
                     showQualityDialog = false
                 },
             )
