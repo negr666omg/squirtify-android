@@ -355,7 +355,7 @@ class PlayerManager(
         if (player !== activeP) return
         val queue = restoredSongs.toList()
         _queue.value = queue
-        baseQueue = queue
+        if (!_shuffle.value || baseQueue.size != queue.size) baseQueue = queue
         timeOffsetBaseMs = 0L
         player.setMediaItems(queue.map { buildMediaItem(it) }, index, positionMs.coerceAtLeast(0L))
         player.prepare()
@@ -2102,6 +2102,9 @@ class PlayerManager(
             val root = JSONObject()
                 .put("version", 1)
                 .put("songs", items)
+                .put("baseOrder", JSONArray().apply {
+                    baseQueue.forEach { put("${it.source.name}|${it.id}") }
+                })
                 .put("currentIndex", _currentIndex.value)
                 .put("positionMs", _positionMs.value.coerceAtLeast(0L))
                 .put("shuffle", _shuffle.value)
@@ -2120,6 +2123,7 @@ class PlayerManager(
         val positionMs: Long,
         val shuffle: Boolean,
         val repeatMode: Int,
+        val baseOrder: List<String>,
     )
 
     private fun readLocalQueue(): LocalQueueSnapshot? = runCatching {
@@ -2152,12 +2156,21 @@ class PlayerManager(
             }
         }
         if (songs.isEmpty()) return null
+        val baseItems = root.optJSONArray("baseOrder")
+        val baseOrder = buildList {
+            if (baseItems != null) {
+                for (i in 0 until baseItems.length()) {
+                    baseItems.optString(i).takeIf { it.isNotBlank() }?.let(::add)
+                }
+            }
+        }
         LocalQueueSnapshot(
             songs = songs,
             currentIndex = root.optInt("currentIndex", 0).coerceIn(0, songs.lastIndex),
             positionMs = root.optLong("positionMs", 0L).coerceAtLeast(0L),
             shuffle = root.optBoolean("shuffle", false),
             repeatMode = root.optInt("repeatMode", REPEAT_OFF).coerceIn(REPEAT_OFF, REPEAT_QUEUE),
+            baseOrder = baseOrder,
         )
     }.onFailure { AppLog.w(TAG, "Could not read local queue: ${it.message}") }.getOrNull()
 
@@ -2177,9 +2190,17 @@ class PlayerManager(
             }
             if (_queue.value.isNotEmpty() || pendingPlayRequest != null) return
             val p = activeP ?: return
-            baseQueue = restored
             _queue.value = restored
             _shuffle.value = local.shuffle
+            if (local.baseOrder.isNotEmpty()) {
+                val remaining = restored.toMutableList()
+                baseQueue = local.baseOrder.mapNotNull { key ->
+                    val index = remaining.indexOfFirst { "${it.source.name}|${it.id}" == key }
+                    if (index >= 0) remaining.removeAt(index) else null
+                } + remaining
+            } else {
+                baseQueue = restored
+            }
             _repeatMode.value = local.repeatMode
             p.repeatMode = when (local.repeatMode) {
                 REPEAT_TRACK -> Player.REPEAT_MODE_ONE
