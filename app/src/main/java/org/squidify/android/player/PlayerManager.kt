@@ -408,8 +408,10 @@ class PlayerManager(
                 finalizeCrossfade()
                 return
             }
-            // Repeat-track is handled by ExoPlayer without a playlist transition.
-            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) {
+            // ExoPlayer reports REPEAT for both repeat-one and repeat-all.
+            // Only repeat-track keeps the same current item; repeat-queue must
+            // update the current index/history when it wraps to the first track.
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT && _repeatMode.value == REPEAT_TRACK) {
                 AppLog.d(TAG, "Repeat-track loop: seamless restart of the same track")
                 return
             }
