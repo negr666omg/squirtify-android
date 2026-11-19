@@ -419,6 +419,58 @@ fun DownloadsScreen() {
                                 LibraryTrackRow(
                                     job = group.jobs[i],
                                     onPlay = { playGroup(group, i) },
+                                    onLongClick = {
+                                        val job = group.jobs[i]
+                                        val playerSong = when (job.source) {
+                                            DownloadSource.SQUIDIFY -> {
+                                                val (coverArtId, albumId) = metaFor(job)
+                                                PlayerSong(
+                                                    id = job.songId ?: job.id,
+                                                    title = job.title,
+                                                    artist = job.artist,
+                                                    album = job.album,
+                                                    durationMs = job.durationMs,
+                                                    coverUrl = job.coverUrl ?: graph.subsonic.coverUrl(coverArtId),
+                                                    coverArtId = coverArtId,
+                                                    albumId = albumId,
+                                                    source = DownloadSource.SQUIDIFY,
+                                                )
+                                            }
+                                            DownloadSource.KHINSIDER -> PlayerSong(
+                                                id = "khi:${job.requestUrl}",
+                                                title = job.title,
+                                                artist = job.artist,
+                                                album = job.album,
+                                                durationMs = job.durationMs,
+                                                coverUrl = job.coverUrl,
+                                                source = DownloadSource.KHINSIDER,
+                                                khiTrackUrl = job.requestUrl,
+                                                khiDirectUrl = job.fileUrl,
+                                            )
+                                        }
+                                        songActions.show(
+                                            Song(
+                                                id = playerSong.id,
+                                                title = job.title,
+                                                album = job.album,
+                                                artist = job.artist,
+                                                coverArt = job.coverUrl,
+                                            ),
+                                            playerSong = playerSong,
+                                            onDownload = if (job.source == DownloadSource.KHINSIDER) {
+                                                {
+                                                    graph.downloads.enqueueKhi(
+                                                        albumName = job.album.orEmpty(),
+                                                        trackTitle = job.title,
+                                                        trackUrl = job.requestUrl,
+                                                        format = job.format,
+                                                        qualityLabel = job.qualityLabel,
+                                                        coverUrl = job.coverUrl,
+                                                    )
+                                                }
+                                            } else null,
+                                        )
+                                    },
                                 )
                             }
                         }
@@ -617,6 +669,7 @@ private fun CachedLibraryTrackRow(
 private fun LibraryTrackRow(
     job: DownloadJob,
     onPlay: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
     val queue by App.graph().player.queue.collectAsState()
     val idx by App.graph().player.currentIndex.collectAsState()
@@ -627,7 +680,7 @@ private fun LibraryTrackRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onPlay() }
+            .combinedClickable(onClick = onPlay, onLongClick = onLongClick)
             .padding(horizontal = 28.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
