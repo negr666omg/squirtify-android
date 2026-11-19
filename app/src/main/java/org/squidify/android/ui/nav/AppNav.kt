@@ -3,10 +3,15 @@
 package org.squidify.android.ui.nav
 
 import android.net.Uri
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -281,12 +286,44 @@ fun AppNavHost(onExitApp: () -> Unit) {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
-                // Keep destination changes free of app-invented scale/fade
-                // motion; Android's own back handling remains with Navigation.
-                enterTransition = { androidx.compose.animation.EnterTransition.None },
-                exitTransition = { androidx.compose.animation.ExitTransition.None },
-                popEnterTransition = { androidx.compose.animation.EnterTransition.None },
-                popExitTransition = { androidx.compose.animation.ExitTransition.None },
+                // Expressive, interruptible page motion: short spatial travel
+                // with a spring settle and a restrained opacity transition.
+                enterTransition = {
+                    slideInHorizontally(
+                        initialOffsetX = { width -> width / 10 },
+                        animationSpec = spring(
+                            dampingRatio = 0.88f,
+                            stiffness = 520f,
+                        ),
+                    ) + fadeIn(animationSpec = tween(140))
+                },
+                exitTransition = {
+                    slideOutHorizontally(
+                        targetOffsetX = { width -> -width / 14 },
+                        animationSpec = spring(
+                            dampingRatio = 0.92f,
+                            stiffness = 560f,
+                        ),
+                    ) + fadeOut(animationSpec = tween(100))
+                },
+                popEnterTransition = {
+                    slideInHorizontally(
+                        initialOffsetX = { width -> -width / 10 },
+                        animationSpec = spring(
+                            dampingRatio = 0.88f,
+                            stiffness = 520f,
+                        ),
+                    ) + fadeIn(animationSpec = tween(140))
+                },
+                popExitTransition = {
+                    slideOutHorizontally(
+                        targetOffsetX = { width -> width / 14 },
+                        animationSpec = spring(
+                            dampingRatio = 0.92f,
+                            stiffness = 560f,
+                        ),
+                    ) + fadeOut(animationSpec = tween(100))
+                },
             ) {
                 composable(Routes.HOME) {
                     HomeScreen(

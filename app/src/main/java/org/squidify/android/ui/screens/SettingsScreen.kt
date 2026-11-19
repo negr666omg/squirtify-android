@@ -6,6 +6,8 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -153,17 +155,27 @@ fun SettingsScreen() {
 
 @Composable
 private fun SettingsTabPill(label: String, selected: Boolean, onClick: () -> Unit) {
+    val containerColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer
+        else androidx.compose.ui.graphics.Color.Transparent,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 620f),
+        label = "settingsTabContainer",
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+        else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 620f),
+        label = "settingsTabContent",
+    )
     Surface(
         shape = RoundedCornerShape(50),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer
-        else androidx.compose.ui.graphics.Color.Transparent,
+        color = containerColor,
         modifier = Modifier.clip(RoundedCornerShape(50)).clickable(onClick = onClick),
     ) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelLarge,
-            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
-            else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = contentColor,
             modifier = Modifier.padding(horizontal = 22.dp, vertical = 10.dp),
         )
     }

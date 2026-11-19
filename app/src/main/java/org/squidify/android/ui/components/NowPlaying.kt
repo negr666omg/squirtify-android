@@ -5,7 +5,9 @@ package org.squidify.android.ui.components
 import android.content.Intent
 import android.net.Uri
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -431,10 +433,21 @@ private fun LyricsProviderSelector(
 
 @Composable
 private fun TabPill(label: String, selected: Boolean, onClick: () -> Unit) {
+    val containerColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer
+        else Color.Transparent,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 620f),
+        label = "playerTabContainer",
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+        else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 620f),
+        label = "playerTabContent",
+    )
     Surface(
         shape = RoundedCornerShape(50),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer
-        else Color.Transparent,
+        color = containerColor,
         // M3 press physics: the pill shrinks under the finger and springs back
         modifier = Modifier.bouncyClickable(pressedScale = 0.93f) {
             AppLog.d("UI", "Now Playing tab → $label")
@@ -444,8 +457,7 @@ private fun TabPill(label: String, selected: Boolean, onClick: () -> Unit) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
-            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
-            else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = contentColor,
             modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp),
         )
     }
