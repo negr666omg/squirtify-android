@@ -42,6 +42,8 @@ data class Settings(
     val hideNowPlayingArtist: Boolean = true,
     /** Manual offline mode; automatic network loss is detected separately. */
     val offlineMode: Boolean = false,
+    /** Very light feedback on explicit Play/Pause taps; disabled by default. */
+    val hapticsEnabled: Boolean = false,
 )
 
 @Serializable
@@ -66,6 +68,7 @@ private data class SettingsState(
     val exitOnTaskRemoved: Boolean? = null,
     val hideNowPlayingArtist: Boolean? = null,
     val offlineMode: Boolean? = null,
+    val hapticsEnabled: Boolean? = null,
 )
 
 /**
@@ -138,6 +141,7 @@ class SettingsRepository(
         exitOnTaskRemoved = exitOnTaskRemoved ?: defaults.exitOnTaskRemoved,
         hideNowPlayingArtist = hideNowPlayingArtist ?: defaults.hideNowPlayingArtist,
         offlineMode = offlineMode ?: defaults.offlineMode,
+        hapticsEnabled = hapticsEnabled ?: defaults.hapticsEnabled,
     )
 
     @Synchronized
@@ -177,6 +181,7 @@ class SettingsRepository(
     suspend fun setExitOnTaskRemoved(b: Boolean) = mutate { it.copy(exitOnTaskRemoved = b) }
     suspend fun setHideNowPlayingArtist(b: Boolean) = mutate { it.copy(hideNowPlayingArtist = b) }
     suspend fun setOfflineMode(b: Boolean) = mutate { it.copy(offlineMode = b) }
+    suspend fun setHapticsEnabled(b: Boolean) = mutate { it.copy(hapticsEnabled = b) }
 
     // ------------------------------------------------------------ searches
 
