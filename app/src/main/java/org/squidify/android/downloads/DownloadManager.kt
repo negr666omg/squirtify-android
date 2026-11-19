@@ -412,7 +412,7 @@ class DownloadManager(
             requestUrl = trackUrl,
             format = format,
             qualityLabel = qualityLabel,
-            fileName = sanitize("$trackTitle.$format"),
+            fileName = sanitize("${sanitize(trackTitle).take(125)} [${hash(trackUrl).take(12)}].$format"),
         )
         AppLog.i(TAG, "Queued KHInsider download: '$trackTitle' ($format) → ${storage.downloadsLocationLabel()}/$albumName/")
         // a previous failed attempt for the same file is REPLACED, never kept
@@ -471,7 +471,12 @@ class DownloadManager(
         // and MP3 320). Keep each quality in its own file; never overwrite the
         // lower-quality copy while an upgrade is downloading.
         val qualitySuffix = if (quality == StreamQuality.ORIGINAL) "" else " [${quality.name.replace('_', '-')}]"
-        return sanitize("$base$qualitySuffix.$ext")
+        // Album directory names are not globally unique (two artists may use
+        // the same album title). Include a stable track ID suffix so files
+        // cannot overwrite each other even when their display names match.
+        val uniqueTrack = hash(song.id).take(12)
+        val safeBase = sanitize(base).take(125)
+        return sanitize("$safeBase [$uniqueTrack]$qualitySuffix.$ext")
     }
 
     private fun qualityRank(quality: StreamQuality): Int {
@@ -557,22 +562,83 @@ class DownloadManager(
         persist()
     }
 
-    @Synchronized
-    fun deleteDownloaded(job: DownloadJob): Boolean {
-        var ok = false
+    private fun deleteJobFile(job: DownloadJob): Boolean {
         val uri = job.contentUri
         if (uri != null) {
-            ok = storage.deleteDocument(uri)
-            if (!ok) {
-                AppLog.w(TAG, "Delete failed for '${job.title}' ($uri)")
-            }
-        } else {
-            ok = finishedFileFor(job)?.delete() == true
+            if (storage.deleteDocument(uri)) return true
+            // A stale registry record whose file is already gone can be
+            // cleaned up, but a still-visible document must remain registered.
+            return !storage.documentExists(uri)
         }
-        _jobs.value = _jobs.value.filterNot { it.id == job.id }
-        persist()
+        val file = finishedFileFor(job) ?: return true
+        return !file.exists() || file.delete()
+    }
+
+    @Synchronized
+    fun deleteDownloaded(job: DownloadJob): Boolean {
+        val ok = deleteJobFile(job)
+        if (ok) {
+            _jobs.value = _jobs.value.filterNot { it.id == job.id }
+            persist()
+        } else {
+            AppLog.w(TAG, "Delete failed for '${job.title}' — keeping its registry entry")
+        }
         AppLog.i(TAG, "Deleted file of '${job.title}' (ok=$ok)")
         return ok
+    }
+
+    /** Delete every finished quality version of one visible track. */
+    @Synchronized
+    fun deleteDownloadedTrack(
+        source: DownloadSource,
+        songId: String? = null,
+        trackUrl: String? = null,
+    ): Boolean {
+        val matches = _jobs.value.filter { job ->
+            job.status == DownloadStatus.DONE && job.kind == "audio" && job.source == source &&
+                when (source) {
+                    DownloadSource.SQUIDIFY -> songId != null && job.songId == songId
+                    DownloadSource.KHINSIDER -> trackUrl != null && job.requestUrl == trackUrl
+                }
+        }
+        if (matches.isEmpty()) return false
+        val removedIds = matches.filter(::deleteJobFile).map { it.id }.toSet()
+        if (removedIds.isNotEmpty()) {
+            _jobs.value = _jobs.value.filterNot { it.id in removedIds }
+            persist()
+        }
+        val complete = removedIds.size == matches.size
+        if (!complete) AppLog.w(TAG, "Some quality versions could not be deleted")
+        return complete
+    }
+
+    /** Delete every downloaded audio version belonging to one offline album. */
+    @Synchronized
+    fun deleteDownloadedAlbum(
+        source: DownloadSource,
+        albumName: String,
+        artist: String?,
+        identity: String?,
+    ): Boolean {
+        val matches = _jobs.value.filter { job ->
+            if (job.status != DownloadStatus.DONE || job.kind != "audio" || job.source != source) {
+                false
+            } else when (source) {
+                DownloadSource.SQUIDIFY -> {
+                    (identity != null && job.albumId == identity) ||
+                        (job.album == albumName && job.artist == artist)
+                }
+                DownloadSource.KHINSIDER -> identity != null &&
+                    job.requestUrl.substringBeforeLast('/') == identity
+            }
+        }
+        if (matches.isEmpty()) return false
+        val removedIds = matches.filter(::deleteJobFile).map { it.id }.toSet()
+        if (removedIds.isNotEmpty()) {
+            _jobs.value = _jobs.value.filterNot { it.id in removedIds }
+            persist()
+        }
+        return removedIds.size == matches.size
     }
 
     /** Local playable Uri for a downloaded Squirtify song (any quality). */
