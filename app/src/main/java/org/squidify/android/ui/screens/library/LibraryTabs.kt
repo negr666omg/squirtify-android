@@ -34,7 +34,7 @@ import org.squidify.android.util.Fmt
 // ------------------------------------------------------------ favourite songs
 
 /**
- * Favourite songs are stored locally (Squidify/UserData/favorites.json):
+ * Favourite songs are stored locally (Squirtify/UserData/favorites.json):
  * no network needed to show them, hearts work for KHInsider tracks too.
  */
 @Composable

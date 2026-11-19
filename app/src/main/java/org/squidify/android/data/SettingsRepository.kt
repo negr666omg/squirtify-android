@@ -70,7 +70,7 @@ private data class SettingsState(
 
 /**
  * Settings + search-history persistence. A tiny atomic JSON store (kept in
- * Squidify/UserData when the storage folder is granted) exposes a Flow-based
+ * Squirtify/UserData when the storage folder is granted) exposes a Flow-based
  * API without DataStore variant-resolution issues.
  */
 class SettingsRepository(

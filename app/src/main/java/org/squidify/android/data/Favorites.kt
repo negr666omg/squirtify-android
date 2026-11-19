@@ -12,7 +12,7 @@ import kotlinx.serialization.json.Json
 import org.squidify.android.player.PlayerSong
 import org.squidify.android.util.AppLog
 
-/** Locally stored favourite song snapshot — works for Squidify and KHInsider. */
+/** Locally stored favourite song snapshot — works for Squirtify and KHInsider. */
 @Serializable
 data class FavSong(
     val id: String,
@@ -88,7 +88,7 @@ data class FavAlbum(
 
 /**
  * Favourites are fully local: a JSON file next to the other user data
- * (Squidify/UserData/favorites.json when the storage tree is granted).
+ * (Squirtify/UserData/favorites.json when the storage tree is granted).
  * No server round-trips — hearts work offline and for KHInsider tracks too.
  */
 class FavoritesRepository(

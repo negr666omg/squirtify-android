@@ -66,7 +66,7 @@ data class HistoryEntry(
 /**
  * Local listening history: what was actually played on this device,
  * independent of any server-side stats. Kept as a JSON list in
- * Squidify/UserData when the storage folder is granted.
+ * Squirtify/UserData when the storage folder is granted.
  */
 class ListenHistory(
     @Suppress("unused") private val context: android.content.Context,

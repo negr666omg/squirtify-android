@@ -48,7 +48,7 @@ import org.squidify.android.util.AppLog
 /**
  * Full-screen cover viewer: pinch-zoom + pan + double-tap reset, and a
  * download action that saves the original image into
- * Squidify/Downloaded Images/ (with a toast showing the path).
+ * Squirtify/Downloaded Images/ (with a toast showing the path).
  */
 @Composable
 fun CoverViewer(
