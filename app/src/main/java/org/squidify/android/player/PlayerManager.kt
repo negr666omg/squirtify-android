@@ -1340,11 +1340,14 @@ class PlayerManager(
      * agree on what "next" means.
      */
     fun toggleShuffle() {
-        val p = activeP ?: return
+        val p = activeP
         val newShuffle = !_shuffle.value
         AppLog.i(TAG, "User: shuffle ${if (newShuffle) "ON" else "OFF"}")
         _shuffle.value = newShuffle
-        if (_queue.value.isEmpty()) return
+        if (_queue.value.isEmpty()) {
+            saveQueue()
+            return
+        }
         if (cfState == CF_OVERLAP) {
             finalizeCrossfadeInterrupted()
         } else if (cfState != CF_NONE) {
@@ -1352,19 +1355,24 @@ class PlayerManager(
         }
 
         val cur = _currentIndex.value
-        if (newShuffle) {
+        val current = _queue.value.getOrNull(cur)
+        val target = if (newShuffle) {
             if (baseQueue.size != _queue.value.size) baseQueue = _queue.value
-            val current = _queue.value.getOrNull(cur)
-            val rest = _queue.value.filterIndexed { i, _ -> i != cur }
-            val target = listOfNotNull(current) + rest.shuffled(shuffleRng)
-            reorderPlaylist(p, target)
-            _queue.value = target
+            listOfNotNull(current) + _queue.value.filterIndexed { i, _ -> i != cur }.shuffled(shuffleRng)
         } else {
-            val base = baseQueue.ifEmpty { _queue.value }
-            reorderPlaylist(p, base)
-            _queue.value = base
+            baseQueue.ifEmpty { _queue.value }
         }
-        _currentIndex.value = p.currentMediaItemIndex
+        if (p != null) {
+            reorderPlaylist(p, target)
+            _currentIndex.value = p.currentMediaItemIndex
+        } else {
+            // The service can briefly be detached during recreation. Keep the
+            // in-memory queue coherent; attach() will rebuild its timeline.
+            _currentIndex.value = current?.let { song ->
+                target.indexOfFirst { it === song }.takeIf { it >= 0 }
+            } ?: target.indices.firstOrNull() ?: -1
+        }
+        _queue.value = target
         saveQueue()
     }
 
@@ -1414,6 +1422,14 @@ class PlayerManager(
     }
 
     private fun albumIdentity(song: PlayerSong): String {
+        if (song.source == org.squidify.android.data.DownloadSource.KHINSIDER) {
+            // KHInsider album names aren't globally unique (games can publish
+            // same-titled soundtracks). Track pages share the stable album URL.
+            val albumPage = song.khiTrackUrl
+                ?.substringBeforeLast('/')
+                ?.takeIf { it.isNotBlank() && it != song.khiTrackUrl }
+            if (albumPage != null) return "KHINSIDER:$albumPage"
+        }
         val album = song.albumId?.takeIf { it.isNotBlank() }
             ?: song.album?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
             ?: song.id
