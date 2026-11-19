@@ -201,65 +201,52 @@ fun AlbumScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.padding(top = 12.dp),
-                                ) {
-                                    val playIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                                    val shufIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                                    val dlIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                                    FilledIconButton(
-                                        onClick = {
-                                            scope.launch {
-                                                player.play(list.map { PlayerSong.from(it) }, 0)
-                                            }
-                                        },
-                                        interactionSource = playIsr,
-                                        modifier = Modifier
-                                            .size(52.dp)
-                                            .pressScale(playIsr, pressedScale = 0.92f),
-                                        colors = IconButtonDefaults.filledIconButtonColors(),
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.PlayArrow,
-                                            contentDescription = "Play",
-                                            modifier = Modifier.size(28.dp),
-                                        )
-                                    }
-                                    FilledTonalIconButton(
-                                        onClick = {
-                                            scope.launch {
-                                                // shuffle order is handled by the player itself
-                                                player.playShuffled(list.map { PlayerSong.from(it) })
-                                            }
-                                        },
-                                        interactionSource = shufIsr,
-                                        modifier = Modifier
-                                            .size(52.dp)
-                                            .pressScale(shufIsr, pressedScale = 0.92f),
-                                    ) {
-                                        Icon(
-                                            SqIcons.Shuffle,
-                                            contentDescription = "Shuffle",
-                                            modifier = Modifier.size(24.dp),
-                                        )
-                                    }
-                                    FilledTonalIconButton(
-                                        onClick = { showAlbumDownloadDialog = true },
-                                        interactionSource = dlIsr,
-                                        modifier = Modifier
-                                            .size(56.dp)
-                                            .pressScale(dlIsr, pressedScale = 0.92f),
-                                        shape = RoundedCornerShape(16.dp),
-                                    ) {
-                                        Icon(
-                                            SqIcons.Download,
-                                            contentDescription = "Download album",
-                                            modifier = Modifier.size(24.dp),
-                                        )
-                                    }
-                                }
+
+                            }
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            val playIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                            val shufIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                            val dlIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                            FilledIconButton(
+                                onClick = {
+                                    scope.launch { player.play(list.map { PlayerSong.from(it) }, 0) }
+                                },
+                                interactionSource = playIsr,
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .pressScale(playIsr, pressedScale = 0.92f),
+                                colors = IconButtonDefaults.filledIconButtonColors(),
+                            ) {
+                                Icon(Icons.Filled.PlayArrow, contentDescription = "Play", modifier = Modifier.size(28.dp))
+                            }
+                            FilledTonalIconButton(
+                                onClick = {
+                                    scope.launch { player.playShuffled(list.map { PlayerSong.from(it) }) }
+                                },
+                                interactionSource = shufIsr,
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .pressScale(shufIsr, pressedScale = 0.92f),
+                            ) {
+                                Icon(SqIcons.Shuffle, contentDescription = "Shuffle", modifier = Modifier.size(24.dp))
+                            }
+                            FilledTonalIconButton(
+                                onClick = { showAlbumDownloadDialog = true },
+                                interactionSource = dlIsr,
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .aspectRatio(1f)
+                                    .pressScale(dlIsr, pressedScale = 0.92f),
+                                shape = RoundedCornerShape(16.dp),
+                            ) {
+                                Icon(SqIcons.Download, contentDescription = "Download album", modifier = Modifier.size(24.dp))
                             }
                         }
                     }
