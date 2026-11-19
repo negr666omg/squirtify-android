@@ -118,7 +118,9 @@ fun DownloadsScreen() {
     val paused = jobs.filter { it.status == DownloadStatus.PAUSED }
     val pending = queued + paused
     val failed = jobs.filter { it.status == DownloadStatus.FAILED }
-    val done = jobs.filter { it.status == DownloadStatus.DONE && it.kind == "audio" }
+    // Offline library collapses multiple encodes of one song to the best
+    // available version; the download registry still retains every file.
+    val done = graph.downloads.completedAudio()
     val storage = graph.downloads.storageUsedBytes()
 
     // Compose keys must be unique across the WHOLE LazyColumn. Job ids are
