@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -798,34 +799,55 @@ private fun DownloadRow(job: DownloadJob) {
             }
         }
         when (job.status) {
-            DownloadStatus.RUNNING, DownloadStatus.QUEUED -> IconButton(onClick = {
-                graph.downloads.pause(job.id)
-            }) {
-                Icon(
-                    imageVector = SqIcons.Pause,
-                    contentDescription = "Pause",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            DownloadStatus.RUNNING, DownloadStatus.QUEUED -> {
+                IconButton(onClick = { graph.downloads.pause(job.id) }) {
+                    Icon(
+                        imageVector = SqIcons.Pause,
+                        contentDescription = "Pause",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = { graph.downloads.cancel(job.id) }) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Cancel download",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
-            DownloadStatus.PAUSED -> IconButton(onClick = {
-                graph.downloads.resume(job.id)
-            }) {
-                Icon(
-                    imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = "Resume",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            DownloadStatus.PAUSED -> {
+                IconButton(onClick = { graph.downloads.resume(job.id) }) {
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = "Resume",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = { graph.downloads.cancel(job.id) }) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Cancel download",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
-            DownloadStatus.FAILED -> IconButton(onClick = {
-                graph.downloads.retry(job.id)
-            }) {
-                Icon(
-                    imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = "Retry",
-                    tint = MaterialTheme.colorScheme.primary,
-                )
+            DownloadStatus.FAILED -> {
+                IconButton(onClick = { graph.downloads.retry(job.id) }) {
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = "Retry",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                IconButton(onClick = { graph.downloads.cancel(job.id) }) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Dismiss failed download",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             DownloadStatus.DONE -> {}
