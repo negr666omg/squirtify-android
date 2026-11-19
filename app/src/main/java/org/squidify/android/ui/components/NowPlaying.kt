@@ -1364,11 +1364,6 @@ private fun PlaybackRateSheet(onDismiss: () -> Unit) {
     var editTarget by remember { mutableStateOf<String?>(null) }
     var exactInput by remember { mutableStateOf("") }
     var exactInputError by remember { mutableStateOf(false) }
-    val exactInputFocusRequester = remember { FocusRequester() }
-
-    LaunchedEffect(editTarget) {
-        if (editTarget != null) exactInputFocusRequester.requestFocus()
-    }
     val exactFocusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -1503,7 +1498,6 @@ private fun PlaybackRateSheet(onDismiss: () -> Unit) {
                         keyboardType = KeyboardType.Decimal,
                         imeAction = ImeAction.Done,
                     ),
-                    modifier = Modifier.focusRequester(exactInputFocusRequester),
                     modifier = Modifier.focusRequester(exactFocusRequester),
                 )
             },
