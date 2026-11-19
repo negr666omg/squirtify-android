@@ -354,7 +354,19 @@ class PlayerManager(
         if (player !== activeP) return
         val queue = restoredSongs
         _queue.value = queue
-        if (!_shuffle.value || baseQueue.size != queue.size) baseQueue = queue
+        if (!_shuffle.value || baseQueue.size != queue.size) {
+            baseQueue = queue
+        } else {
+            // Keep the user's unshuffled order while replacing stale KHInsider
+            // URLs with the freshly resolved PlayerSong instances.
+            val remaining = queue.toMutableList()
+            baseQueue = baseQueue.mapNotNull { old ->
+                val refreshedIndex = remaining.indexOfFirst {
+                    it.source == old.source && it.id == old.id
+                }
+                if (refreshedIndex >= 0) remaining.removeAt(refreshedIndex) else null
+            } + remaining
+        }
         timeOffsetBaseMs = 0L
         player.setMediaItems(queue.map { buildMediaItem(it) }, index, positionMs.coerceAtLeast(0L))
         player.prepare()
