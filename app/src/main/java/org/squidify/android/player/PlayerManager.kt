@@ -546,6 +546,9 @@ class PlayerManager(
             if (cfState != CF_OVERLAP) {
                 _isPlaying.value = positionSource()?.isPlaying == true
             }
+            // System media controls, Bluetooth headsets and audio-focus
+            // changes can pause playback without going through togglePlayPause.
+            if (!playWhenReady) saveQueue()
         }
 
         override fun onPlaybackSuppressionReasonChanged(suppressionReason: Int) {
