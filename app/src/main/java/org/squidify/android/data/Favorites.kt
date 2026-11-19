@@ -67,7 +67,8 @@ data class FavSong(
             source = song.source,
             albumId = song.albumId,
             artistId = song.artistId,
-            khiTrackUrl = song.khiTrackUrl ?: song.khiDirectUrl,
+            // Persist the stable KHInsider page URL, never an expiring signed media URL.
+            khiTrackUrl = song.khiTrackUrl,
             addedAt = now,
         )
     }
