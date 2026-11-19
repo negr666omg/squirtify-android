@@ -284,7 +284,6 @@ fun NowPlayingScreen(
                     shuffle = shuffle,
                     repeatMode = repeatMode,
                     playbackTempo = settings.playbackTempo,
-                    playbackPitch = settings.playbackPitch,
                     isHearted = isHearted,
                     downloadStatus = downloadStatus,
                     scrollingText = settings.scrollingText,
@@ -460,7 +459,6 @@ private fun PlayingTab(
     shuffle: Boolean,
     repeatMode: Int,
     playbackTempo: Float,
-    playbackPitch: Float,
     isHearted: Boolean,
     downloadStatus: DownloadStatus?,
     scrollingText: Boolean,
@@ -659,7 +657,7 @@ private fun PlayingTab(
             Surface(
                 shape = RoundedCornerShape(50),
                 color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.bouncyClickable(pressedScale = 0.94f, onClick = onPlaybackRateTap),
+                modifier = Modifier.clickable(onClick = onPlaybackRateTap),
             ) {
                 Text(
                     text = "${playbackTempo.formatRate()}×",
