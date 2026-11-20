@@ -29,7 +29,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -59,7 +58,6 @@ import org.squidify.android.ui.components.EmptyState
 import org.squidify.android.ui.components.ErrorRetry
 import org.squidify.android.ui.components.KhiDownloadQualityDialog
 import org.squidify.android.ui.components.LoadingShelf
-import org.squidify.android.ui.components.adaptiveArtworkSize
 import org.squidify.android.ui.components.pressScale
 import org.squidify.android.ui.theme.SqIcons
 
@@ -380,7 +378,10 @@ fun KhiAlbumScreen(
                     // (multi-disc albums can list the same file URL more than once).
                     items(
                         count = visibleIndices.size,
-                        key = { visibleIndex -> "t$visibleIndex-${a.tracks[visibleIndices[visibleIndex]].url}" },
+                        key = { visibleIndex ->
+                            val originalIndex = visibleIndices[visibleIndex]
+                            "t$originalIndex-${a.tracks[originalIndex].url}"
+                        },
                     ) { visibleIndex ->
                         val trackIndex = visibleIndices[visibleIndex]
                         val track = a.tracks[trackIndex]
