@@ -56,7 +56,7 @@ class App : Application() {
             .memoryCache {
                 MemoryCache.Builder(this).maxSizePercent(0.15).build()
             }
-            .crossfade(true)
+            .crossfade(false)
             .build()
     }
 

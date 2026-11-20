@@ -200,6 +200,7 @@ fun AppNavHost(onExitApp: () -> Unit) {
                             MiniPlayer(
                                 song = current,
                                 onTogglePlay = { player.togglePlayPause() },
+                                onPrevious = { player.previous() },
                                 onNext = { player.next() },
                                 onOpen = { sheet.open() },
                             )

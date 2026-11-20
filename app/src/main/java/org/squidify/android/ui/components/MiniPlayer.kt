@@ -4,6 +4,7 @@ package org.squidify.android.ui.components
 
 import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,10 +32,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.squidify.android.App
 import org.squidify.android.player.PlayerSong
+import org.squidify.android.ui.components.adaptiveArtworkSize
 import org.squidify.android.ui.components.marqueeIf
 import org.squidify.android.ui.components.pressScale
 import org.squidify.android.ui.theme.SqIcons
@@ -50,6 +54,7 @@ import org.squidify.android.ui.theme.SqIcons
 fun MiniPlayer(
     song: PlayerSong?,
     onTogglePlay: () -> Unit,
+    onPrevious: () -> Unit,
     onNext: () -> Unit,
     onOpen: () -> Unit,
 ) {
@@ -67,11 +72,29 @@ fun MiniPlayer(
     val duration = player.durationMs.collectAsState()
 
     val scroll = settings.scrollingText
+    val swipeThresholdPx = with(LocalDensity.current) { 56.dp.toPx() }
     val playIsr = remember { MutableInteractionSource() }
     val nextIsr = remember { MutableInteractionSource() }
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .pointerInput(song.id, swipeThresholdPx) {
+                var horizontalDistance = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = { horizontalDistance = 0f },
+                    onHorizontalDrag = { change, dragAmount ->
+                        horizontalDistance += dragAmount
+                        change.consume()
+                    },
+                    onDragEnd = {
+                        when {
+                            horizontalDistance <= -swipeThresholdPx -> onNext()
+                            horizontalDistance >= swipeThresholdPx -> onPrevious()
+                        }
+                    },
+                    onDragCancel = { horizontalDistance = 0f },
+                )
+            }
             .clickable(onClick = onOpen),
     ) {
             LinearProgressIndicator(
@@ -92,7 +115,7 @@ fun MiniPlayer(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 CoverArt(
-                    url = song.coverArtUrl(),
+                    url = song.coverArtUrl(adaptiveArtworkSize(50.dp)),
                     modifier = Modifier.size(50.dp),
                     corner = 12.dp,
                     contentDescription = song.album,

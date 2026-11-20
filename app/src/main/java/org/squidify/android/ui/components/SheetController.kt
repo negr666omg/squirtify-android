@@ -74,8 +74,8 @@ class SheetController(private val scope: CoroutineScope) {
         val draggedDown = 1f - progress
         dragVelocity = 0f
 
-        val fastDownwardFling = progressVelocity < -1.05f && draggedDown > 0.025f
-        val close = draggedDown > 0.28f || fastDownwardFling
+        val fastDownwardFling = progressVelocity < -0.75f && draggedDown > 0.015f
+        val close = draggedDown > 0.16f || fastDownwardFling
         glideTo(if (close) 0f else 1f, initialVelocity = progressVelocity)
     }
 
@@ -104,8 +104,8 @@ class SheetController(private val scope: CoroutineScope) {
         // Critically controlled, low-bounce settle with enough response to
         // preserve the user's fling direction and speed.
         private val SETTLE_SPEC = spring<Float>(
-            dampingRatio = 0.92f,
-            stiffness = 420f,
+            dampingRatio = 0.9f,
+            stiffness = 720f,
             visibilityThreshold = 0.001f,
         )
     }

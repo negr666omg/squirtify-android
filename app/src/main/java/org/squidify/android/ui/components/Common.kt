@@ -1,6 +1,5 @@
 package org.squidify.android.ui.components
 
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -43,12 +42,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import kotlin.math.roundToInt
 import org.squidify.android.data.Album
 import org.squidify.android.data.Artist
 import org.squidify.android.data.Genre
@@ -73,8 +74,8 @@ fun Modifier.pressScale(
     val scale by animateFloatAsState(
         targetValue = if (isPressed) pressedScale else 1f,
         animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMediumLow,
+            dampingRatio = 0.84f,
+            stiffness = 1800f,
         ),
         label = "pressScale",
     )
@@ -98,8 +99,8 @@ fun Modifier.bouncyClickable(
     val scale by animateFloatAsState(
         targetValue = if (pressed) pressedScale else 1f,
         animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMediumLow,
+            dampingRatio = 0.84f,
+            stiffness = 1800f,
         ),
         label = "bouncyClick",
     )
@@ -156,6 +157,16 @@ fun SectionHeader(
             )
         }
     }
+}
+
+/**
+ * Returns the image-server size in physical pixels for a target Compose size.
+ * Avoids requesting 480–1000px images for 48–150dp list artwork.
+ */
+@Composable
+fun adaptiveArtworkSize(targetSize: Dp, maxPixels: Int = 1400): Int {
+    val density = LocalDensity.current
+    return with(density) { targetSize.toPx().roundToInt() }.coerceIn(96, maxPixels)
 }
 
 @Composable

@@ -7,6 +7,8 @@ import android.net.Uri
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -96,6 +98,7 @@ import org.squidify.android.data.LyricsResult
 import org.squidify.android.data.Song
 import org.squidify.android.data.StreamQuality
 import org.squidify.android.player.PlayerSong
+import org.squidify.android.ui.components.adaptiveArtworkSize
 import org.squidify.android.ui.theme.SqIcons
 import org.squidify.android.util.Fmt
 import org.squidify.android.util.AppLog
@@ -504,6 +507,14 @@ private fun PlayingTab(
     val playIsr = remember { MutableInteractionSource() }
     val prevIsr = remember { MutableInteractionSource() }
     val nextIsr = remember { MutableInteractionSource() }
+    val playCorner by animateDpAsState(
+        targetValue = if (isPlaying) 20.dp else 39.dp,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = 900f,
+        ),
+        label = "playButtonCorner",
+    )
 
     // Soft breathing dim while the track is still loading — the cover gently
     // darkens and brightens so buffering is obvious without a harsh overlay.
@@ -550,7 +561,7 @@ private fun PlayingTab(
                     CoverArt(
                         // 1000px fills the big square; the original
                         // (size=0) pulled multi-MB art every track change
-                        url = current.coverArtUrl(1000),
+                        url = current.coverArtUrl(adaptiveArtworkSize(side)),
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer { alpha = pulseAlpha?.value ?: 1f },
@@ -747,7 +758,7 @@ private fun PlayingTab(
                 modifier = Modifier
                     .size(78.dp)
                     .pressScale(playIsr, pressedScale = 0.90f)
-                    .clip(RoundedCornerShape(22.dp))
+                    .clip(RoundedCornerShape(playCorner))
                     .background(MaterialTheme.colorScheme.primary)
                     .clickable(interactionSource = playIsr, indication = androidx.compose.material3.ripple(), onClick = onTogglePlay),
                 contentAlignment = Alignment.Center,
@@ -957,7 +968,13 @@ fun QualityInfoSheet(
         }
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+    )
+    ModalBottomSheet(
+        sheetState = sheetState,
+        onDismissRequest = onDismiss,
+    ) {
         Column(
             Modifier
                 .fillMaxWidth()
@@ -1406,7 +1423,13 @@ private fun PlaybackRateSheet(onDismiss: () -> Unit) {
         graph.player.setPlaybackRate(tempo, pitch, linked)
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+    )
+    ModalBottomSheet(
+        sheetState = sheetState,
+        onDismissRequest = onDismiss,
+    ) {
         Column(
             Modifier
                 .fillMaxWidth()
