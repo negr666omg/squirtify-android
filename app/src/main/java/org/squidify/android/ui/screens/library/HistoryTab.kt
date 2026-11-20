@@ -31,6 +31,7 @@ import org.squidify.android.data.DownloadSource
 import org.squidify.android.data.HistoryEntry
 import org.squidify.android.player.PlayerSong
 import org.squidify.android.ui.components.CoverArt
+import org.squidify.android.ui.components.adaptiveArtworkSize
 import org.squidify.android.ui.components.EmptyState
 import org.squidify.android.ui.components.SongRow
 import org.squidify.android.util.Fmt
@@ -79,7 +80,10 @@ fun HistoryTab(
                     val e = entries[i]
                     val cover = when (e.source) {
                         DownloadSource.SQUIDIFY ->
-                            App.graph().subsonic.coverUrl(e.coverArtId ?: e.albumId?.let { "al-$it" }, 480)
+                            App.graph().subsonic.coverUrl(
+                                e.coverArtId ?: e.albumId?.let { "al-$it" },
+                                adaptiveArtworkSize(48.dp),
+                            )
                         DownloadSource.KHINSIDER -> e.coverUrl?.let { graph.khi.imageUrl(it) }
                     }
                     val isCurrent = queue.getOrNull(idx)?.id == e.songId

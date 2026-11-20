@@ -43,29 +43,14 @@ fun LibraryScreen(
     var selected by remember { mutableStateOf(0) }
 
     Column(Modifier.fillMaxSize()) {
-        Column(
+        Text(
+            text = "Library",
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 22.dp)
-                .padding(top = 22.dp, bottom = 16.dp),
-        ) {
-            Text(
-                text = "YOUR COLLECTION",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                text = "Your library",
-                style = MaterialTheme.typography.displaySmall,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
-            Text(
-                text = "The music you've played and saved.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
+                .padding(horizontal = 22.dp, vertical = 18.dp),
+        )
         Surface(
             modifier = Modifier
                 .fillMaxWidth()

@@ -37,6 +37,7 @@ import org.squidify.android.App
 import org.squidify.android.data.Album
 import org.squidify.android.data.HistoryEntry
 import org.squidify.android.ui.components.CoverArt
+import org.squidify.android.ui.components.adaptiveArtworkSize
 import org.squidify.android.ui.components.ErrorRetry
 import org.squidify.android.ui.components.LoadingShelf
 import org.squidify.android.ui.components.SectionHeader
@@ -84,13 +85,18 @@ fun HomeScreen(
                     .padding(horizontal = 18.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Text(
+                    text = "Home",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
                 Spacer(Modifier.weight(1f))
                 Surface(
                     shape = RoundedCornerShape(24.dp),
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 ) {
                     Row(
-                        modifier = Modifier.padding(start = 12.dp, end = 4.dp),
+                        modifier = Modifier.padding(start = 10.dp, end = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
@@ -99,6 +105,7 @@ fun HomeScreen(
                             color = if (settings.offlineMode || !hasInternet) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        Spacer(Modifier.width(8.dp))
                         Switch(
                             checked = settings.offlineMode || !hasInternet,
                             onCheckedChange = { enabled ->
@@ -158,7 +165,7 @@ private fun RecentTrackShelf(
                 title = entry.title,
                 artist = entry.artist ?: entry.album,
                 coverUrl = entry.coverUrl
-                    ?: entry.coverArtId?.let { graph.subsonic.coverUrl(it, 480) },
+                    ?: entry.coverArtId?.let { graph.subsonic.coverUrl(it, adaptiveArtworkSize(134.dp)) },
                 onClick = { onTrackClick(i) },
             )
         }
@@ -235,7 +242,7 @@ private fun ShelfSection(title: String?, albums: List<Album>?, onAlbumClick: (Al
                     org.squidify.android.ui.components.AlbumCard(
                         album = album,
                         onClick = { onAlbumClick(album) },
-                        coverUrl = album.coverArtUrl(480),
+                        coverUrl = album.coverArtUrl(adaptiveArtworkSize(130.dp)),
                     )
                 }
             }

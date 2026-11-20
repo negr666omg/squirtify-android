@@ -23,6 +23,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -31,6 +33,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
@@ -59,6 +62,7 @@ import org.squidify.android.data.StreamQuality
 import org.squidify.android.player.PlayerSong
 import org.squidify.android.ui.components.CoverArt
 import org.squidify.android.ui.components.CoverViewer
+import org.squidify.android.ui.components.adaptiveArtworkSize
 import org.squidify.android.ui.components.DownloadStateIcon
 import org.squidify.android.ui.components.EmptyState
 import org.squidify.android.ui.components.ErrorRetry
@@ -69,6 +73,40 @@ import org.squidify.android.ui.screens.library.SongActionsHandler
 import org.squidify.android.ui.theme.SqIcons
 import org.squidify.android.util.Fmt
 
+private object AlbumScreenMemoryCache {
+    private const val MAX_ENTRIES = 12
+    private const val MAX_AGE_MS = 20 * 60 * 1000L
+
+    data class Snapshot(
+        val album: Album,
+        val songs: List<Song>,
+        val savedAtMs: Long,
+    )
+
+    private val entries = LinkedHashMap<String, Snapshot>(16, 0.75f, true)
+
+    @Synchronized
+    fun get(albumId: String): Snapshot? {
+        val snapshot = entries[albumId] ?: return null
+        if (System.currentTimeMillis() - snapshot.savedAtMs > MAX_AGE_MS) {
+            entries.remove(albumId)
+            return null
+        }
+        return snapshot
+    }
+
+    @Synchronized
+    fun put(albumId: String, album: Album, songs: List<Song>) {
+        entries[albumId] = Snapshot(album, songs, System.currentTimeMillis())
+        while (entries.size > MAX_ENTRIES) {
+            val iterator = entries.entries.iterator()
+            if (!iterator.hasNext()) break
+            iterator.next()
+            iterator.remove()
+        }
+    }
+}
+
 @Composable
 fun AlbumScreen(
     albumId: String,
@@ -78,10 +116,13 @@ fun AlbumScreen(
 ) {
     val graph = App.graph()
     val scope = rememberCoroutineScope()
-    var album by remember { mutableStateOf<Album?>(null) }
-    var songs by remember { mutableStateOf<List<Song>?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var reload by remember { mutableStateOf(0) }
+    val cachedAlbum = remember(albumId) { AlbumScreenMemoryCache.get(albumId) }
+    var album by remember(albumId) { mutableStateOf(cachedAlbum?.album) }
+    var songs by remember(albumId) { mutableStateOf(cachedAlbum?.songs) }
+    var error by remember(albumId) { mutableStateOf<String?>(null) }
+    var reload by remember(albumId) { mutableStateOf(0) }
+    var searchOpen by remember(albumId) { mutableStateOf(false) }
+    var searchQuery by remember(albumId) { mutableStateOf("") }
 
     val actions = remember { SongActionsHandler(onGoToArtist = { s -> s.artistId?.let(onArtistClick) }) }
     actions.Render()
@@ -90,12 +131,14 @@ fun AlbumScreen(
     val favAlbumIds by graph.favorites.albumIds.collectAsState()
 
     LaunchedEffect(albumId, reload) {
+        if (reload == 0 && album != null && songs != null) return@LaunchedEffect
         error = null
         try {
             val (a, s) = graph.subsonic.getAlbum(albumId)
             graph.offlineLibrary.cacheSquidify(a, s, a.coverArtUrl(600))
             album = a
             songs = s
+            AlbumScreenMemoryCache.put(albumId, a, s)
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (e: Exception) {
@@ -106,19 +149,6 @@ fun AlbumScreen(
     val player = graph.player
     val queue by player.queue.collectAsState()
     val idx by player.currentIndex.collectAsState()
-    val downloads by graph.downloads.jobs.collectAsState()
-    val isBufferingNow by player.isBuffering.collectAsState()
-
-    // Resolve download metadata once per update instead of scanning every
-    // download job for every visible song row during lazy-list composition.
-    val downloadBySongId = remember(downloads) {
-        downloads.asSequence()
-            .filter {
-                it.source == org.squidify.android.data.DownloadSource.SQUIDIFY &&
-                    it.songId != null
-            }
-            .associateBy { it.songId!! }
-    }
     val currentSongId = queue.getOrNull(idx)?.id
 
     val listState = rememberLazyListState()
@@ -143,7 +173,33 @@ fun AlbumScreen(
                     graph.favorites.toggleAlbum(a)
                 }
             },
+            onSearch = {
+                searchOpen = !searchOpen
+                if (!searchOpen) searchQuery = ""
+            },
+            searchActive = searchOpen,
         )
+
+        if (searchOpen) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search tracks") },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Clear search")
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
 
         when {
             error != null -> ErrorRetry("Couldn't load album: $error") { reload++ }
@@ -176,7 +232,7 @@ fun AlbumScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 CoverArt(
-                                    url = a.coverArtUrl(600),
+                                    url = a.coverArtUrl(adaptiveArtworkSize(216.dp)),
                                     modifier = Modifier
                                         .size(216.dp)
                                         .clickable { showCoverViewer = true },
@@ -282,7 +338,19 @@ fun AlbumScreen(
                         }
                     }
 
-                    items(list.size, key = { list[it].id }) { i ->
+                    val visibleIndices = remember(list, searchQuery) {
+                        list.indices.filter { index ->
+                            val song = list[index]
+                            searchQuery.isBlank() ||
+                                song.title.contains(searchQuery, ignoreCase = true) ||
+                                song.artist.orEmpty().contains(searchQuery, ignoreCase = true)
+                        }
+                    }
+                    if (visibleIndices.isEmpty() && searchQuery.isNotBlank()) {
+                        item { EmptyState("No matching tracks") }
+                    }
+                    items(visibleIndices.size, key = { list[visibleIndices[it]].id }) { visibleIndex ->
+                        val i = visibleIndices[visibleIndex]
                         val song = list[i]
                         // Subscribe to only THIS track's prefetch progress. The
                         // global map updates while a full track buffers; collecting
@@ -293,7 +361,16 @@ fun AlbumScreen(
                                 .distinctUntilChanged()
                         }.collectAsState(initial = null)
                         val isCurrent = currentSongId == song.id
-                        val download = downloadBySongId[song.id]
+                        val download by remember(song.id) {
+                            graph.downloads.jobs
+                                .map { jobs ->
+                                    jobs.firstOrNull {
+                                        it.source == org.squidify.android.data.DownloadSource.SQUIDIFY &&
+                                            it.songId == song.id
+                                    }
+                                }
+                                .distinctUntilChanged()
+                        }.collectAsState(initial = null)
                         val downloadStatus = download?.status
                         // Loading bar under the row: whole-track prefetch for
                         // playback, or an active download job
@@ -415,6 +492,8 @@ fun TopBar(
     onBack: () -> Unit,
     starState: Boolean = false,
     onStar: (() -> Unit)? = null,
+    searchActive: Boolean = false,
+    onSearch: (() -> Unit)? = null,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -443,6 +522,16 @@ fun TopBar(
                     .weight(1f)
                     .padding(end = 8.dp),
             )
+            if (onSearch != null) {
+                IconButton(onClick = onSearch) {
+                    Icon(
+                        imageVector = if (searchActive) Icons.Filled.Close else Icons.Filled.Search,
+                        contentDescription = if (searchActive) "Close track search" else "Search tracks",
+                        tint = if (searchActive) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             if (onStar != null) {
                 IconButton(onClick = onStar) {
                     Icon(
