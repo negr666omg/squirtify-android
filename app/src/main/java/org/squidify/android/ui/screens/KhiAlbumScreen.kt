@@ -3,9 +3,11 @@
 package org.squidify.android.ui.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,14 +18,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -36,9 +43,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.squidify.android.App
 import org.squidify.android.data.KhiAlbum
@@ -46,15 +55,15 @@ import org.squidify.android.data.KhiTrack
 import org.squidify.android.player.PlayerSong
 import org.squidify.android.ui.components.CoverArt
 import org.squidify.android.ui.components.CoverViewer
+import org.squidify.android.ui.components.EmptyState
 import org.squidify.android.ui.components.ErrorRetry
-import androidx.compose.foundation.layout.Column
 import org.squidify.android.ui.components.KhiDownloadQualityDialog
 import org.squidify.android.ui.components.LoadingShelf
+import org.squidify.android.ui.components.adaptiveArtworkSize
 import org.squidify.android.ui.components.pressScale
 import org.squidify.android.ui.theme.SqIcons
-import org.squidify.android.util.Fmt
 
-/** KHInsider album browser: browse, play, and download whole albums. */
+/** KHInsider album browser, using the same album layout as Squidify albums. */
 @Composable
 fun KhiAlbumScreen(
     albumUrl: String,
@@ -63,19 +72,20 @@ fun KhiAlbumScreen(
 ) {
     val graph = App.graph()
     val scope = rememberCoroutineScope()
-    var album by remember { mutableStateOf<KhiAlbum?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var reload by remember { mutableStateOf(0) }
-    var showDownloadDialog by remember { mutableStateOf(false) }
-    var showCoverViewer by remember { mutableStateOf(false) }
-    var pendingTrack by remember { mutableStateOf<KhiTrack?>(null) }
+    var album by remember(albumUrl) { mutableStateOf<KhiAlbum?>(null) }
+    var error by remember(albumUrl) { mutableStateOf<String?>(null) }
+    var reload by remember(albumUrl) { mutableStateOf(0) }
+    var showDownloadDialog by remember(albumUrl) { mutableStateOf(false) }
+    var showCoverViewer by remember(albumUrl) { mutableStateOf(false) }
+    var pendingTrack by remember(albumUrl) { mutableStateOf<KhiTrack?>(null) }
+    var searchOpen by remember(albumUrl) { mutableStateOf(false) }
+    var searchQuery by remember(albumUrl) { mutableStateOf("") }
+
     val settings by graph.settings.state().collectAsState()
     val player = graph.player
     val queue by player.queue.collectAsState()
     val idx by player.currentIndex.collectAsState()
     val isBufferingNow by player.isBuffering.collectAsState()
-    val bufferProgress by player.bufferProgress.collectAsState()
-
     val listState = rememberLazyListState()
 
     LaunchedEffect(albumUrl, reload) {
@@ -107,13 +117,10 @@ fun KhiAlbumScreen(
         val players = a.tracks.map {
             PlayerSong.fromKhi(a.name, it.title, it.url, it.duration, graph.khi.imageUrl(a.coverUrl))
         }
-        // PlayerManager owns URL resolution and publishes the optimistic queue
-        // before resolving. This lets the tapped row highlight immediately
-        // and show its spinner instead of appearing unresponsive for seconds.
+        // PlayerManager publishes the optimistic queue before resolving the URL.
         player.play(players, startIndex, shuffled)
     }
 
-    // Quality ask for a single KHInsider track download
     pendingTrack?.let { track ->
         KhiDownloadQualityDialog(
             trackTitle = track.title,
@@ -165,179 +172,246 @@ fun KhiAlbumScreen(
                                     coverUrl = graph.khi.imageUrl(a.coverUrl),
                                 )
                             }
-                            // full album → save every cover image into the album folder
                             graph.downloads.enqueueKhiAlbumArt(a)
                             showDownloadDialog = false
-                        }) { Text("Download ${fmt.uppercase()} — all tracks") }
+                        }) {
+                            Text("Download ${fmt.uppercase()} — all tracks")
+                        }
                     }
                 }
             },
             confirmButton = {},
-            dismissButton = { TextButton(onClick = { showDownloadDialog = false }) { Text("Cancel") } },
+            dismissButton = {
+                TextButton(onClick = { showDownloadDialog = false }) { Text("Cancel") }
+            },
         )
     }
 
     Column(Modifier.fillMaxSize()) {
-        TopBar(title = album?.name ?: "KHInsider", onBack = onBack)
+        TopBar(
+            title = album?.name ?: "KHInsider",
+            onBack = onBack,
+            searchActive = searchOpen,
+            onSearch = {
+                searchOpen = !searchOpen
+                if (!searchOpen) searchQuery = ""
+            },
+        )
+
+        if (searchOpen) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search tracks") },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Clear search")
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+
         when {
             error != null -> ErrorRetry("Couldn't load album: $error") { reload++ }
-            album == null -> LoadingShelf(280.dp)
+            album == null -> LoadingShelf(240.dp)
             else -> {
                 val a = album!!
+                val visibleIndices = remember(a.tracks, searchQuery) {
+                    a.tracks.indices.filter { index ->
+                        searchQuery.isBlank() ||
+                            a.tracks[index].title.contains(searchQuery, ignoreCase = true)
+                    }
+                }
+                val albumFormats = remember(a.availableFormats) {
+                    a.availableFormats.map { it.lowercase() }.filter { it != "cd" }
+                }
+                val actualFormat = remember(settings.khiQuality, albumFormats) {
+                    when (settings.khiQuality) {
+                        org.squidify.android.data.KhiQuality.MP3 -> "MP3"
+                        else -> if ("flac" in albumFormats) "FLAC" else "MP3"
+                    }
+                }
+                val displayFormats = remember(a.availableFormats) {
+                    a.availableFormats.filter { it.lowercase() != "cd" }
+                        .map { it.uppercase() }
+                        .distinct()
+                }
+
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 140.dp),
+                    contentPadding = PaddingValues(bottom = 140.dp),
                 ) {
-                    item {
-                        Row(Modifier.padding(16.dp)) {
-                            CoverArt(
-                                url = graph.khi.imageUrl(a.coverUrl),
+                    item(key = "album-header") {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            shape = RoundedCornerShape(
+                                topStart = 38.dp,
+                                topEnd = 38.dp,
+                                bottomEnd = 38.dp,
+                                bottomStart = 18.dp,
+                            ),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ) {
+                            Column(
                                 modifier = Modifier
-                                    .size(170.dp)
-                                    .aspectRatio(1f)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable { showCoverViewer = true },
-                                corner = 12.dp,
-                                contentDescription = a.name,
-                            )
-                            Spacer(Modifier.width(16.dp))
-                            Column(Modifier.weight(1f)) {
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 18.dp, vertical = 20.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                CoverArt(
+                                    url = graph.khi.imageUrl(a.coverUrl),
+                                    modifier = Modifier
+                                        .size(216.dp)
+                                        .clickable { showCoverViewer = true },
+                                    corner = 32.dp,
+                                    contentDescription = a.name,
+                                )
+                                Spacer(Modifier.height(16.dp))
+                                Text(
+                                    text = a.albumType?.uppercase() ?: "ALBUM",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                )
+                                Spacer(Modifier.height(4.dp))
                                 Text(
                                     text = a.name,
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    color = MaterialTheme.colorScheme.onBackground,
-                                    maxLines = 3,
+                                    style = MaterialTheme.typography.headlineLarge,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
                                     text = listOfNotNull(
                                         a.year,
-                                        a.albumType,
                                         "${a.tracks.size} tracks",
+                                        a.totalFilesize?.takeIf { it.isNotBlank() },
                                     ).joinToString(" · "),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(top = 4.dp),
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(top = 5.dp),
                                 )
-                                if (!a.totalFilesize.isNullOrBlank()) {
+                                if (displayFormats.isNotEmpty()) {
+                                    Spacer(Modifier.height(5.dp))
                                     Text(
-                                        text = a.totalFilesize,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        text = displayFormats.joinToString(" · "),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.tertiary,
+                                        textAlign = TextAlign.Center,
                                     )
                                 }
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.padding(top = 12.dp),
-                                ) {
-                                    val playIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                                    val shufIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                                    val queueIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                                    val dlIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                                    FilledIconButton(
-                                        onClick = { playAll(0) },
-                                        interactionSource = playIsr,
-                                        modifier = Modifier
-                                            .size(52.dp)
-                                            .pressScale(playIsr, pressedScale = 0.92f),
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.PlayArrow,
-                                            contentDescription = "Play",
-                                            modifier = Modifier.size(28.dp),
-                                        )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            val playIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                            val shuffleIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                            val queueIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                            val downloadIsr = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+
+                            FilledTonalButton(
+                                onClick = { playAll(0) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(52.dp),
+                            ) {
+                                Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(22.dp))
+                                Spacer(Modifier.width(7.dp))
+                                Text("Play")
+                            }
+                            FilledTonalIconButton(
+                                onClick = { playAll(shuffled = true) },
+                                interactionSource = shuffleIsr,
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .pressScale(shuffleIsr, pressedScale = 0.92f),
+                            ) {
+                                Icon(SqIcons.Shuffle, contentDescription = "Shuffle", modifier = Modifier.size(24.dp))
+                            }
+                            FilledTonalIconButton(
+                                onClick = {
+                                    val songs = a.tracks.map {
+                                        PlayerSong.fromKhi(a.name, it.title, it.url, it.duration, graph.khi.imageUrl(a.coverUrl))
                                     }
-                                    FilledTonalIconButton(
-                                        onClick = {
-                                            // shuffle order is handled by the player itself
-                                            playAll(shuffled = true)
-                                        },
-                                        interactionSource = shufIsr,
-                                        modifier = Modifier
-                                            .size(52.dp)
-                                            .pressScale(shufIsr, pressedScale = 0.92f),
-                                    ) {
-                                        Icon(
-                                            SqIcons.Shuffle,
-                                            contentDescription = "Shuffle",
-                                            modifier = Modifier.size(24.dp),
-                                        )
-                                    }
-                                    FilledTonalIconButton(
-                                        onClick = {
-                                            val songs = a.tracks.map {
-                                                PlayerSong.fromKhi(a.name, it.title, it.url, it.duration, graph.khi.imageUrl(a.coverUrl))
-                                            }
-                                            scope.launch { player.addToQueue(songs) }
-                                        },
-                                        interactionSource = queueIsr,
-                                        modifier = Modifier
-                                            .size(52.dp)
-                                            .pressScale(queueIsr, pressedScale = 0.92f),
-                                    ) {
-                                        Icon(
-                                            SqIcons.PlaylistAdd,
-                                            contentDescription = "Add album to queue",
-                                            modifier = Modifier.size(24.dp),
-                                        )
-                                    }
-                                    FilledTonalIconButton(
-                                        onClick = { showDownloadDialog = true },
-                                        interactionSource = dlIsr,
-                                        modifier = Modifier
-                                            .size(56.dp)
-                                            .pressScale(dlIsr, pressedScale = 0.92f),
-                                        shape = RoundedCornerShape(16.dp),
-                                    ) {
-                                        Icon(
-                                            SqIcons.Download,
-                                            contentDescription = "Download album",
-                                            modifier = Modifier.size(24.dp),
-                                        )
-                                    }
-                                }
+                                    scope.launch { player.addToQueue(songs) }
+                                },
+                                interactionSource = queueIsr,
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .pressScale(queueIsr, pressedScale = 0.92f),
+                            ) {
+                                Icon(SqIcons.PlaylistAdd, contentDescription = "Add album to queue", modifier = Modifier.size(24.dp))
+                            }
+                            FilledTonalIconButton(
+                                onClick = { showDownloadDialog = true },
+                                interactionSource = downloadIsr,
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .pressScale(downloadIsr, pressedScale = 0.92f),
+                            ) {
+                                Icon(SqIcons.Download, contentDescription = "Download album", modifier = Modifier.size(24.dp))
                             }
                         }
                     }
 
-                    // index-suffixed keys: multi-disc KHInsider albums can list
-                    // the same file URL twice — duplicate keys crash Compose
-                    items(a.tracks.size, key = { "t$it-${a.tracks[it].url}" }) { i ->
-                        val t = a.tracks[i]
+                    if (visibleIndices.isEmpty() && searchQuery.isNotBlank()) {
+                        item(key = "no-matching-tracks") { EmptyState("No matching tracks") }
+                    }
+
+                    // Keep original indices for playback and stable unique keys
+                    // (multi-disc albums can list the same file URL more than once).
+                    items(
+                        count = visibleIndices.size,
+                        key = { visibleIndex -> "t$visibleIndex-${a.tracks[visibleIndices[visibleIndex]].url}" },
+                    ) { visibleIndex ->
+                        val trackIndex = visibleIndices[visibleIndex]
+                        val track = a.tracks[trackIndex]
                         val currentQueueSong = queue.getOrNull(idx)
-                        val isCurrent = currentQueueSong?.id == "khi:${t.url}"
-                        // transient navigation highlight — yields to the real
-                        // current track instead of staying lit forever
-                        val highlighted = highlightTrackUrl == t.url &&
+                        val isCurrent = currentQueueSong?.id == "khi:${track.url}"
+                        val highlighted = highlightTrackUrl == track.url &&
                             (currentQueueSong == null || isCurrent)
-                        // per-row loading spinner: the tapped track visibly
-                        // reacts right where the finger landed
+
+                        // Subscribe each row only to its own buffer progress, not
+                        // the whole map, so buffering doesn't recompose the list.
+                        val trackBufferProgress by remember(track.url) {
+                            player.bufferProgress
+                                .map { it["khi:${track.url}"] }
+                                .distinctUntilChanged()
+                        }.collectAsState(initial = null)
                         val loading = (isCurrent || highlighted) &&
-                            (isBufferingNow || currentQueueSong?.let { bufferProgress.containsKey(it.id) } == true)
-                        // The badge shows the format that will ACTUALLY play with the
-                        // current quality setting — "best" prefers FLAC when the
-                        // album offers one, and a missing FLAC falls back to MP3.
-                        val albumFormats = a.availableFormats.map { it.lowercase() }
-                            .filter { it != "cd" }
-                        val actualFormat = when (settings.khiQuality) {
-                            org.squidify.android.data.KhiQuality.MP3 -> "MP3"
-                            else -> if ("flac" in albumFormats) "FLAC" else "MP3"
-                        }
+                            (isBufferingNow || trackBufferProgress != null)
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { playAll(i) }
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                                .clickable { playAll(trackIndex) }
+                                .padding(horizontal = 16.dp, vertical = 9.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                text = t.number.toString(),
+                                text = track.number.toString(),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = if (isCurrent || highlighted) MaterialTheme.colorScheme.primary
                                 else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.width(36.dp),
+                                modifier = Modifier.width(34.dp),
                             )
                             if (loading) {
                                 CircularProgressIndicator(
@@ -345,35 +419,45 @@ fun KhiAlbumScreen(
                                     strokeWidth = 2.dp,
                                     color = MaterialTheme.colorScheme.primary,
                                 )
-                                Spacer(Modifier.width(6.dp))
+                                Spacer(Modifier.width(8.dp))
                             }
                             Column(Modifier.weight(1f)) {
                                 Text(
-                                    text = t.title,
+                                    text = track.title,
                                     style = MaterialTheme.typography.titleSmall,
                                     color = if (isCurrent || highlighted) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.onBackground,
+                                    else MaterialTheme.colorScheme.onSurface,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
+                                val trackDetails = listOfNotNull(
+                                    track.duration?.takeIf { it.isNotBlank() },
+                                    track.fileSize?.takeIf { it.isNotBlank() },
+                                    track.bitrate?.takeIf { it.isNotBlank() },
+                                ).joinToString(" · ")
+                                if (trackDetails.isNotEmpty()) {
+                                    Text(
+                                        text = trackDetails,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                modifier = Modifier.padding(horizontal = 6.dp),
+                            ) {
                                 Text(
-                                    text = listOfNotNull(
-                                        t.duration,
-                                        t.fileSize,
-                                    ).joinToString(" · "),
-                                    style = MaterialTheme.typography.bodySmall,
+                                    text = actualFormat,
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
                                 )
                             }
-                            Text(
-                                text = actualFormat,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 8.dp),
-                            )
-                            IconButton(onClick = { pendingTrack = t }) {
+                            IconButton(onClick = { pendingTrack = track }) {
                                 Icon(
                                     SqIcons.Download,
                                     contentDescription = "Download track",
