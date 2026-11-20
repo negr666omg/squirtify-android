@@ -149,6 +149,7 @@ fun AlbumScreen(
     val player = graph.player
     val queue by player.queue.collectAsState()
     val idx by player.currentIndex.collectAsState()
+    val isBufferingNow by player.isBuffering.collectAsState()
     val currentSongId = queue.getOrNull(idx)?.id
 
     val listState = rememberLazyListState()
@@ -207,6 +208,14 @@ fun AlbumScreen(
             else -> {
                 val a = album!!
                 val list = songs!!
+                val visibleIndices = remember(list, searchQuery) {
+                    list.indices.filter { index ->
+                        val song = list[index]
+                        searchQuery.isBlank() ||
+                            song.title.contains(searchQuery, ignoreCase = true) ||
+                            song.artist.orEmpty().contains(searchQuery, ignoreCase = true)
+                    }
+                }
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
@@ -338,14 +347,6 @@ fun AlbumScreen(
                         }
                     }
 
-                    val visibleIndices = remember(list, searchQuery) {
-                        list.indices.filter { index ->
-                            val song = list[index]
-                            searchQuery.isBlank() ||
-                                song.title.contains(searchQuery, ignoreCase = true) ||
-                                song.artist.orEmpty().contains(searchQuery, ignoreCase = true)
-                        }
-                    }
                     if (visibleIndices.isEmpty() && searchQuery.isNotBlank()) {
                         item { EmptyState("No matching tracks") }
                     }
