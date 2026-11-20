@@ -155,7 +155,7 @@ fun ArtistScreen(
                                         )
                                     }
                                 },
-                                coverUrl = SongCover(song),
+                                coverUrl = SongCover(song, adaptiveArtworkSize(56.dp)),
                                 isCurrent = isCurrent,
                                 isLoading = isCurrent && isBuffering,
                                 showAlbum = true,

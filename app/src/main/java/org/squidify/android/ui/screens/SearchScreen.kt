@@ -400,7 +400,7 @@ fun SearchScreen(
                             val list = songs.orEmpty().map { PlayerSong.from(it) }
                             scope.launch { player.play(list, i) }
                         },
-                        coverUrl = SongCover(song),
+                        coverUrl = SongCover(song, adaptiveArtworkSize(56.dp)),
                         isCurrent = isCurrent,
                         isLoading = isCurrent && playerBuffering,
                         showAlbum = true,

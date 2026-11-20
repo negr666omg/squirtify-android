@@ -24,6 +24,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import org.squidify.android.ui.components.adaptiveArtworkSize
 import kotlinx.coroutines.launch
 import org.squidify.android.App
 import org.squidify.android.data.Song
@@ -184,7 +185,7 @@ fun PlaylistScreen(
                             onClick = {
                                 scope.launch { App.graph().player.play(list.map { PlayerSong.from(it) }, i) }
                             },
-                            coverUrl = SongCover(song),
+                            coverUrl = SongCover(song, adaptiveArtworkSize(56.dp)),
                             isCurrent = isCurrent,
                             isLoading = isCurrent && isBuffering,
                             showAlbum = true,

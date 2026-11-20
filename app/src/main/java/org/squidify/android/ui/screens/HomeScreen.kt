@@ -257,5 +257,5 @@ fun Album.coverArtUrl(size: Int = 480): String? =
 fun org.squidify.android.data.Artist.coverArtUrl(size: Int = 300): String? =
     App.graph().subsonic.coverUrl(coverArt, size)
 
-fun SongCover(song: org.squidify.android.data.Song): String? =
-    App.graph().subsonic.coverUrl(song.coverArt ?: song.albumId?.let { "al-$it" }, 480)
+fun SongCover(song: org.squidify.android.data.Song, size: Int = 480): String? =
+    App.graph().subsonic.coverUrl(song.coverArt ?: song.albumId?.let { "al-$it" }, size)
