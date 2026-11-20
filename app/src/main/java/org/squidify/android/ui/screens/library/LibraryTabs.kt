@@ -26,6 +26,7 @@ import org.squidify.android.App
 import org.squidify.android.data.Album
 import org.squidify.android.player.PlayerSong
 import org.squidify.android.ui.components.AlbumCard
+import org.squidify.android.ui.components.adaptiveArtworkSize
 import org.squidify.android.ui.components.EmptyState
 import org.squidify.android.ui.components.SongRow
 import org.squidify.android.ui.theme.SqIcons
@@ -110,7 +111,7 @@ fun FavouriteSongsTab() {
                 },
                 showAlbum = true,
                 coverUrl = fav.coverUrl ?: fav.coverArtId?.let {
-                    graph.subsonic.coverUrl(it, 480)
+                    graph.subsonic.coverUrl(it, adaptiveArtworkSize(56.dp))
                 },
                 trailingText = if (fav.durationMs > 0) Fmt.durationMs(fav.durationMs) else null,
                 isCurrent = isCurrent,
@@ -167,7 +168,7 @@ fun FavouriteAlbumsTab(onAlbumClick: (Album) -> Unit) {
                         ),
                     )
                 },
-                coverUrl = fav.coverArtId?.let { graph.subsonic.coverUrl(it, 480) },
+                coverUrl = fav.coverArtId?.let { graph.subsonic.coverUrl(it, adaptiveArtworkSize(150.dp)) },
                 modifier = Modifier.padding(4.dp),
                 width = androidx.compose.ui.unit.Dp.Unspecified,
             )

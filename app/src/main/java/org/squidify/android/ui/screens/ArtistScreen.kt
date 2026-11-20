@@ -39,6 +39,7 @@ import org.squidify.android.data.Artist
 import org.squidify.android.data.NativeSong
 import org.squidify.android.player.PlayerSong
 import org.squidify.android.ui.components.AlbumCard
+import org.squidify.android.ui.components.adaptiveArtworkSize
 import org.squidify.android.ui.components.ErrorRetry
 import org.squidify.android.ui.components.LoadingShelf
 import org.squidify.android.ui.components.SectionHeader
@@ -133,7 +134,7 @@ fun ArtistScreen(
                                     AlbumCard(
                                         album = albums!![i],
                                         onClick = { onAlbumClick(albums!![i]) },
-                                        coverUrl = albums!![i].coverArtUrl(),
+                                        coverUrl = albums!![i].coverArtUrl(adaptiveArtworkSize(130.dp)),
                                     )
                                 }
                             }

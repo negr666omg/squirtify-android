@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import org.squidify.android.App
 import org.squidify.android.data.Album
 import org.squidify.android.ui.components.AlbumCard
+import org.squidify.android.ui.components.adaptiveArtworkSize
 import org.squidify.android.ui.components.EmptyState
 import org.squidify.android.ui.components.ErrorRetry
 import org.squidify.android.ui.components.LoadingShelf
@@ -57,7 +58,7 @@ fun GenreScreen(genreName: String, onBack: () -> Unit, onAlbumClick: (Album) -> 
                     AlbumCard(
                         album = album,
                         onClick = { onAlbumClick(album) },
-                        coverUrl = album.coverArtUrl(),
+                        coverUrl = album.coverArtUrl(adaptiveArtworkSize(150.dp)),
                         modifier = Modifier.padding(4.dp),
                         width = androidx.compose.ui.unit.Dp.Unspecified,
                     )

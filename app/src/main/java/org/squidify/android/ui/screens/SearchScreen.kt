@@ -50,6 +50,7 @@ import org.squidify.android.data.KhiAlbumSummary
 import org.squidify.android.data.Song
 import org.squidify.android.player.PlayerSong
 import org.squidify.android.ui.components.ArtistRow
+import org.squidify.android.ui.components.adaptiveArtworkSize
 import org.squidify.android.ui.components.CoverArt
 import org.squidify.android.ui.components.EmptyState
 import org.squidify.android.ui.components.LoadingShelf
@@ -379,7 +380,7 @@ fun SearchScreen(
                     ArtistRow(
                         artist = artists!![i],
                         onClick = { onArtistClick(artists!![i]) },
-                        coverUrl = artists!![i].coverArtUrl(),
+                        coverUrl = artists!![i].coverArtUrl(adaptiveArtworkSize(52.dp)),
                     )
                 }
             }
@@ -515,7 +516,7 @@ private fun SquidifyAlbumRow(album: Album, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CoverArt(
-            url = album.coverArtUrl(480),
+            url = album.coverArtUrl(adaptiveArtworkSize(72.dp)),
             modifier = Modifier
                 .width(72.dp)
                 .aspectRatio(1f),
